@@ -674,7 +674,23 @@ function selectDay(index) {
   })
   
   // Add active class to selected card
-  document.querySelector(`[data-day="${index}"]`).classList.add('active')
+  const selectedCard = document.querySelector(`[data-day="${index}"]`)
+  selectedCard.classList.add('active')
+  
+  // Scroll to the selected day card with some offset from the top
+  const sidebar = document.querySelector('.sidebar')
+  const sidebarRect = sidebar.getBoundingClientRect()
+  const cardRect = selectedCard.getBoundingClientRect()
+  const offset = 100 // Pixels from top of sidebar
+  
+  // Calculate the scroll position
+  const scrollTop = sidebar.scrollTop + (cardRect.top - sidebarRect.top) - offset
+  
+  // Smooth scroll to the position
+  sidebar.scrollTo({
+    top: scrollTop,
+    behavior: 'smooth'
+  })
   
   // Center map on selected location
   const day = currentTripData.days[index]
@@ -693,19 +709,24 @@ function addMapMarkers(tripDays) {
   tripDays.forEach((day, index) => {
     const marker = L.marker(day.coordinates).addTo(map)
     
+    // Simple, minimal popup with just essential info
     marker.bindPopup(`
-      <div>
-        <h4>${day.day} - ${day.city}</h4>
-        <p>${day.description}</p>
-        <div class="popup-images">
-          <div style="text-align: center; margin: 10px 0;">
-            <a href="#" class="view-all-images" onclick="showLocationImagesForDay(${index})">
-              📸 View Images
-            </a>
-          </div>
-        </div>
+      <div style="text-align: center; padding: 5px;">
+        <h4 style="margin: 0 0 5px 0; font-size: 1rem; color: #333;">${day.day}</h4>
+        <p style="margin: 0; font-size: 0.9rem; color: #666; font-weight: 500;">${day.city}</p>
       </div>
     `)
+    
+    // When marker is clicked, select the corresponding day
+    marker.on('click', () => {
+      currentSelectedDay = index
+      selectDay(index)
+      updateKeyboardFocus()
+      // On desktop, show images after selecting
+      if (window.innerWidth > 768) {
+        showLocationImages(day)
+      }
+    })
     
     markers.push(marker)
   })
