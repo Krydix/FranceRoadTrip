@@ -1,106 +1,18 @@
 import './style.css'
 import L from 'leaflet'
 
-// Road trip data
-const roadTripData = [
-  {
-    id: 1,
-    day: "Day 1",
-    date: "July 18, 2025",
-    city: "Berlin",
-    country: "Germany",
-    description: "Departure from Berlin at 15:00. Drive to first overnight stop.",
-    camping: "Camping am Werbellinsee",
-    coordinates: [52.5200, 13.4050],
-    distance: "60 km from Berlin",
-    activities: ["Pick up rental car", "Drive to campsite", "Set up camp", "Evening by the lake"]
-  },
-  {
-    id: 2,
-    day: "Day 2",
-    date: "July 19, 2025",
-    city: "Bruges",
-    country: "Belgium",
-    description: "Full day in beautiful Bruges. Explore medieval architecture and canals.",
-    camping: "Camping Klein Strand",
-    coordinates: [51.2093, 3.2247],
-    distance: "520 km from Berlin",
-    activities: ["Historic city center", "Canal boat tour", "Bruges Beer Museum", "Market Square"]
-  },
-  {
-    id: 3,
-    day: "Day 3",
-    date: "July 20, 2025",
-    city: "Bayeux",
-    country: "France",
-    description: "Drive to Normandy. Visit Bayeux and the famous tapestry.",
-    camping: "Camping Municipal de Bayeux",
-    coordinates: [49.2765, -0.7032],
-    distance: "310 km from Bruges",
-    activities: ["Bayeux Tapestry", "Bayeux Cathedral", "Local markets", "Normandy countryside"]
-  },
-  {
-    id: 4,
-    day: "Day 4",
-    date: "July 21, 2025",
-    city: "Omaha Beach",
-    country: "France",
-    description: "D-Day beaches and historical sites. Visit Omaha Beach and American Cemetery.",
-    camping: "Camping de la Plage",
-    coordinates: [49.3697, -0.8507],
-    distance: "15 km from Bayeux",
-    activities: ["Omaha Beach", "American Cemetery", "Overlord Museum", "Pointe du Hoc"]
-  },
-  {
-    id: 5,
-    day: "Day 5",
-    date: "July 22, 2025",
-    city: "Mont-Saint-Michel",
-    country: "France",
-    description: "Visit the iconic Mont-Saint-Michel abbey and surrounding bay.",
-    camping: "Camping du Mont-Saint-Michel",
-    coordinates: [48.6359, -1.5115],
-    distance: "120 km from Omaha Beach",
-    activities: ["Mont-Saint-Michel Abbey", "Bay walks", "Medieval streets", "Tidal phenomena"]
-  },
-  {
-    id: 6,
-    day: "Day 6",
-    date: "July 23, 2025",
-    city: "Saint-Malo",
-    country: "France",
-    description: "Explore the walled city of Saint-Malo and enjoy Brittany's coast.",
-    camping: "Camping Aleth",
-    coordinates: [48.6494, -2.0257],
-    distance: "50 km from Mont-Saint-Michel",
-    activities: ["Walled city exploration", "Fort National", "Beach walks", "Seafood dining"]
-  },
-  {
-    id: 7,
-    day: "Day 7",
-    date: "July 24, 2025",
-    city: "Return to Berlin",
-    country: "Germany",
-    description: "Long drive back to Berlin. Arrive evening before car return.",
-    camping: "Hotel near airport",
-    coordinates: [52.5200, 13.4050],
-    distance: "800 km to Berlin",
-    activities: ["Drive back", "Rest stops", "Arrive Berlin", "Prepare for car return"]
-  }
-]
-
 // Global variables
 let map
 let currentSlideIndex = 0
 let currentImages = []
 let markers = []
+let currentTripData = null
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
   initializeMap()
-  renderItinerary()
-  addMapMarkers()
-  drawRoute()
+  loadAndRenderTrip()
+  setupModalHandlers()
   
   // Add mobile enhancements
   addTouchGestures()
@@ -112,6 +24,454 @@ document.addEventListener('DOMContentLoaded', function() {
     handleZoomControlsOnResize()
   })
 })
+
+// Load and render trip data
+async function loadAndRenderTrip() {
+  try {
+    // Try to load custom trip from localStorage first
+    const customTrip = localStorage.getItem('customTrip')
+    let tripMarkdown
+    
+    if (customTrip) {
+      tripMarkdown = customTrip
+    } else {
+      // Load default trip from public/trip.md
+      // Handle both development and production paths
+      let response = await fetch('./trip.md')
+      
+      // If that fails, try alternative paths
+      if (!response.ok) {
+        response = await fetch('/FranceRoadTrip/trip.md')
+      }
+      
+      if (!response.ok) {
+        response = await fetch('/trip.md')
+      }
+      
+      if (!response.ok) {
+        throw new Error('Failed to load default trip')
+      }
+      
+      tripMarkdown = await response.text()
+    }
+    
+    // Parse the markdown and render
+    const parsedData = parseTripMarkdown(tripMarkdown)
+    console.log('Parsed trip data:', parsedData)
+    renderPage(parsedData)
+    
+  } catch (error) {
+    console.error('Error loading trip:', error)
+    showError('Failed to load trip data. Please try again.')
+  }
+}
+
+// Parse trip markdown into structured data
+function parseTripMarkdown(markdown) {
+  const lines = markdown.split('\n')
+  const tripData = {
+    title: '',
+    subtitle: '',
+    days: []
+  }
+  
+  let currentDay = null
+  let currentSection = null
+  let inFrontmatter = false
+  let locationInfo = {}
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
+    
+    // Handle YAML frontmatter
+    if (line === '---') {
+      inFrontmatter = !inFrontmatter
+      continue
+    }
+    
+    // Parse frontmatter content
+    if (inFrontmatter) {
+      if (line.startsWith('title:')) {
+        tripData.title = line.substring(6).trim().replace(/['"]/g, '')
+      }
+      else if (line.startsWith('subtitle:')) {
+        tripData.subtitle = line.substring(9).trim().replace(/['"]/g, '')
+      }
+      // We could also handle startDate and endDate if needed
+      continue
+    }
+    
+    // Handle legacy format title
+    if (line.startsWith('# ')) {
+      tripData.title = line.substring(2).trim()
+    }
+    
+    // Parse subtitle info (legacy format)
+    else if (line.startsWith('**Duration:**')) {
+      const duration = line.substring(13).trim()
+      tripData.subtitle = duration
+    }
+    else if (line.startsWith('**Dates:**')) {
+      const dates = line.substring(10).trim()
+      if (tripData.subtitle) {
+        tripData.subtitle += ' • ' + dates
+      } else {
+        tripData.subtitle = dates
+      }
+    }
+    else if (line.startsWith('**Type:**')) {
+      const type = line.substring(9).trim()
+      if (tripData.subtitle) {
+        tripData.subtitle += ' • ' + type
+      } else {
+        tripData.subtitle = type
+      }
+    }
+    
+    // Parse day headers - Support both old and new formats
+    else if (line.startsWith('## Day ')) {
+      // If we have a current day, add it to our days array
+      if (currentDay) {
+        // Only save valid days with coordinates
+        if (currentDay.coordinates.length === 2) {
+          tripData.days.push(currentDay)
+        }
+      }
+      
+      // Reset location info for the new day
+      locationInfo = {}
+      
+      // Parse day number
+      const dayNumberMatch = line.match(/## Day (\d+)/)
+      const dayNumber = dayNumberMatch ? parseInt(dayNumberMatch[1]) : tripData.days.length + 1
+      
+      // Extract the title part after the day number
+      let dayTitle = line.split(':').slice(1).join(':').trim()
+      let city = '', country = ''
+      
+      // Try to parse city and country from title
+      if (dayTitle.includes(',')) {
+        const parts = dayTitle.split(',')
+        city = parts[0].trim()
+        country = parts[1].trim()
+      } else {
+        // Just use dayTitle as city
+        city = dayTitle
+      }
+      
+      currentDay = {
+        id: dayNumber,
+        day: `Day ${dayNumber}`,
+        city: city,
+        country: country,
+        date: '',
+        coordinates: [],
+        camping: '',
+        distance: '',
+        description: '',
+        activities: []
+      }
+      currentSection = 'day'
+    }
+    
+    // Parse location info for new format
+    else if (line.startsWith('- **Location**:')) {
+      const locationParts = line.substring(14).trim().split(',')
+      if (locationParts.length >= 2) {
+        if (currentDay) {
+          currentDay.city = locationParts[0].trim()
+          currentDay.country = locationParts[1].trim()
+        } else {
+          locationInfo.city = locationParts[0].trim()
+          locationInfo.country = locationParts[1].trim()
+        }
+      } else if (locationParts.length === 1) {
+        if (currentDay) {
+          currentDay.city = locationParts[0].trim()
+        } else {
+          locationInfo.city = locationParts[0].trim()
+        }
+      }
+    }
+    else if (line.startsWith('- **Coords**:')) {
+      const coordsStr = line.substring(12).trim()
+      const coords = coordsStr.split(',').map(c => parseFloat(c.trim()))
+      if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+        if (currentDay) {
+          currentDay.coordinates = coords
+        } else {
+          locationInfo.coordinates = coords
+        }
+      }
+    }
+    else if (line.startsWith('- **Camping**:')) {
+      const camping = line.substring(14).trim()
+      if (currentDay) {
+        currentDay.camping = camping
+      } else {
+        locationInfo.camping = camping
+      }
+    }
+    else if (line.startsWith('- **Notes**:')) {
+      const notes = line.substring(11).trim()
+      if (currentDay) {
+        currentDay.description = notes
+      } else {
+        locationInfo.description = notes
+      }
+    }
+    
+    // Parse day details with various formats (legacy format)
+    else if (currentDay && (line.startsWith('**Date:**') || line.startsWith('- **Date:**'))) {
+      currentDay.date = line.includes('- **Date:**') 
+        ? line.substring(11).trim() 
+        : line.substring(9).trim()
+    }
+    else if (currentDay && (line.startsWith('**Coordinates:**') || line.startsWith('- **Coords:**'))) {
+      const coordsStr = line.includes('- **Coords:**') 
+        ? line.substring(13).trim() 
+        : line.substring(16).trim()
+      
+      const coords = coordsStr.split(',').map(c => parseFloat(c.trim()))
+      
+      // Make sure we have valid coordinates
+      if (coords.length >= 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+        currentDay.coordinates = coords
+      }
+    }
+    else if (currentDay && (line.startsWith('**Camping:**') || line.startsWith('- **Camping:**'))) {
+      currentDay.camping = line.includes('- **Camping:**') 
+        ? line.substring(14).trim() 
+        : line.substring(12).trim()
+    }
+    else if (currentDay && (line.startsWith('**Distance:**') || line.startsWith('- **Distance:**'))) {
+      currentDay.distance = line.includes('- **Distance:**') 
+        ? line.substring(15).trim() 
+        : line.substring(13).trim()
+    }
+    else if (currentDay && line.startsWith('**Activities:**')) {
+      currentSection = 'activities'
+    }
+    else if (currentDay && (line.startsWith('- **Notes:**') || line.startsWith('**Notes:**'))) {
+      const notes = line.includes('- **Notes:**') 
+        ? line.substring(12).trim() 
+        : line.substring(10).trim()
+      
+      if (notes) {
+        currentDay.description = notes
+      }
+    }
+    
+    // Parse activities
+    else if (currentSection === 'activities' && line.startsWith('- ')) {
+      if (currentDay) {
+        if (!currentDay.activities) currentDay.activities = [];
+        currentDay.activities.push(line.substring(2).trim())
+      }
+    }
+    
+    // Parse description (lines between day header and first bold field)
+    else if (currentDay && currentSection === 'day' && line && !line.startsWith('**') && !line.startsWith('-')) {
+      if (currentDay.description) {
+        currentDay.description += ' ' + line
+      } else {
+        currentDay.description = line
+      }
+    }
+  }
+  
+  // Add the last day if it exists and has coordinates
+  if (currentDay && currentDay.coordinates.length === 2) {
+    tripData.days.push(currentDay)
+  }
+  
+  // Validate the parsed data
+  if (!tripData.title || tripData.days.length === 0) {
+    console.error("Parsing failed: Missing title or no days found", tripData);
+    throw new Error('Invalid trip format');
+  }
+  
+  // Ensure all days have coordinates
+  for (const day of tripData.days) {
+    if (!day.coordinates || day.coordinates.length !== 2 || 
+        isNaN(day.coordinates[0]) || isNaN(day.coordinates[1])) {
+      console.error(`Missing or invalid coordinates for day ${day.day}`);
+      throw new Error(`Invalid coordinates for ${day.day}`);
+    }
+  }
+  
+  console.log('Parsed trip data:', tripData);
+  return tripData
+}
+
+// Render the page with parsed trip data
+function renderPage(tripData) {
+  currentTripData = tripData
+  
+  // Update header
+  document.querySelector('.header h1').textContent = `🚗 ${tripData.title}`
+  document.getElementById('trip-subtitle').textContent = tripData.subtitle
+  
+  // Clear existing content
+  document.getElementById('itinerary').innerHTML = ''
+  markers.forEach(marker => map.removeLayer(marker))
+  markers = []
+  
+  // Clear existing route lines
+  map.eachLayer(function(layer) {
+    if (layer instanceof L.Polyline) {
+      map.removeLayer(layer)
+    }
+  })
+  
+  // Render itinerary
+  renderItinerary(tripData.days)
+  
+  // Add map markers and draw route
+  addMapMarkers(tripData.days)
+  drawRoute(tripData.days)
+}
+
+// Setup modal event handlers
+function setupModalHandlers() {
+  const modal = document.getElementById('trip-modal')
+  const loadTripBtn = document.getElementById('load-trip-btn')
+  const closeBtn = document.querySelector('.close-modal')
+  const copyPromptBtn = document.getElementById('copy-prompt-btn')
+  const loadTripSubmit = document.getElementById('load-trip-submit')
+  const tripTextarea = document.getElementById('trip-markdown')
+  const errorDiv = document.getElementById('trip-error')
+  
+  // Open modal
+  loadTripBtn.addEventListener('click', () => {
+    modal.style.display = 'block'
+    tripTextarea.focus()
+  })
+  
+  // Close modal
+  closeBtn.addEventListener('click', () => {
+    modal.style.display = 'none'
+    clearError()
+  })
+  
+  // Close modal when clicking outside
+  window.addEventListener('click', (event) => {
+    if (event.target === modal) {
+      modal.style.display = 'none'
+      clearError()
+    }
+  })
+  
+  // Copy prompt template
+  copyPromptBtn.addEventListener('click', async () => {
+    try {
+      // Try multiple paths for the prompt template
+      let response = await fetch('./prompt-template.md')
+      
+      // If that fails, try alternative paths
+      if (!response.ok) {
+        response = await fetch('/FranceRoadTrip/prompt-template.md')
+      }
+      
+      if (!response.ok) {
+        response = await fetch('/prompt-template.md')
+      }
+      
+      if (!response.ok) {
+        throw new Error('Failed to load prompt template')
+      }
+      
+      const promptText = await response.text()
+      
+      // Replace placeholder date with actual current date
+      const today = new Date();
+      const formattedDate = today.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long', 
+        day: 'numeric'
+      });
+      
+      const updatedPrompt = promptText.replace(
+        /begins on July 17, 2025( \(today's date\))?/g, 
+        `begins on ${formattedDate} (today's date)`
+      )
+      
+      // Copy to clipboard
+      await navigator.clipboard.writeText(updatedPrompt)
+      
+      // Show feedback
+      const originalText = copyPromptBtn.textContent
+      copyPromptBtn.textContent = 'Copied!'
+      setTimeout(() => {
+        copyPromptBtn.textContent = originalText
+      }, 2000)
+    } catch (error) {
+      console.error('Error copying prompt:', error)
+      showError('Failed to copy prompt template')
+    }
+  })
+  
+  // Load custom trip
+  loadTripSubmit.addEventListener('click', () => {
+    const markdown = tripTextarea.value.trim()
+    if (!markdown) {
+      showError('Please paste your trip Markdown')
+      return
+    }
+    
+    try {
+      const parsedData = parseTripMarkdown(markdown)
+      
+      // Validate parsed data
+      if (!parsedData.title || parsedData.days.length === 0) {
+        throw new Error('Invalid trip format')
+      }
+      
+      // Save to localStorage
+      localStorage.setItem('customTrip', markdown)
+      
+      // Render the new trip
+      renderPage(parsedData)
+      
+      // Close modal
+      modal.style.display = 'none'
+      tripTextarea.value = ''
+      clearError()
+      
+    } catch (error) {
+      console.error('Error parsing trip:', error)
+      showError('Invalid trip format. Please check your Markdown and try again.')
+    }
+  })
+  
+  // Add button to reset to default trip
+  const resetBtn = document.createElement('button')
+  resetBtn.textContent = 'Reset to Default'
+  resetBtn.className = 'secondary-btn'
+  resetBtn.style.marginRight = '0.5rem'
+  resetBtn.addEventListener('click', () => {
+    localStorage.removeItem('customTrip')
+    loadAndRenderTrip()
+    modal.style.display = 'none'
+    tripTextarea.value = ''
+    clearError()
+  })
+  
+  document.querySelector('.modal-actions').insertBefore(resetBtn, copyPromptBtn)
+}
+
+// Show error message
+function showError(message) {
+  const errorDiv = document.getElementById('trip-error')
+  errorDiv.textContent = message
+  errorDiv.classList.add('show')
+}
+
+// Clear error message
+function clearError() {
+  const errorDiv = document.getElementById('trip-error')
+  errorDiv.classList.remove('show')
+}
 
 // Initialize Leaflet map
 function initializeMap() {
@@ -162,10 +522,10 @@ function addMobileZoomControls() {
 }
 
 // Render itinerary in sidebar
-function renderItinerary() {
+function renderItinerary(tripDays) {
   const itineraryContainer = document.getElementById('itinerary')
   
-  roadTripData.forEach((day, index) => {
+  tripDays.forEach((day, index) => {
     const dayCard = document.createElement('div')
     dayCard.className = 'day-card'
     dayCard.setAttribute('data-day', index)
@@ -193,6 +553,8 @@ function renderItinerary() {
 
 // Select a specific day
 function selectDay(index) {
+  if (!currentTripData || !currentTripData.days[index]) return
+  
   // Remove active class from all cards
   document.querySelectorAll('.day-card').forEach(card => {
     card.classList.remove('active')
@@ -202,7 +564,7 @@ function selectDay(index) {
   document.querySelector(`[data-day="${index}"]`).classList.add('active')
   
   // Center map on selected location
-  const day = roadTripData[index]
+  const day = currentTripData.days[index]
   map.setView(day.coordinates, 10)
   
   // Highlight marker
@@ -214,8 +576,8 @@ function selectDay(index) {
 }
 
 // Add markers to map
-function addMapMarkers() {
-  roadTripData.forEach((day, index) => {
+function addMapMarkers(tripDays) {
+  tripDays.forEach((day, index) => {
     const marker = L.marker(day.coordinates).addTo(map)
     
     marker.bindPopup(`
@@ -237,8 +599,8 @@ function addMapMarkers() {
 }
 
 // Draw route on map
-function drawRoute() {
-  const routeCoordinates = roadTripData.map(day => day.coordinates)
+function drawRoute(tripDays) {
+  const routeCoordinates = tripDays.map(day => day.coordinates)
   
   const routeLine = L.polyline(routeCoordinates, {
     color: '#007bff',

@@ -11,8 +11,9 @@
   <body>
     <div id="app">
       <header class="header">
-        <h1>🚗 Berlin to Normandy Road Trip</h1>
-        <p>7-Day Camping Adventure • July 18-25, 2025</p>
+        <h1>🚗 Road Trip Planner</h1>
+        <p id="trip-subtitle">7-Day Camping Adventure • July 18-25, 2025</p>
+        <button id="load-trip-btn" class="load-trip-btn">Load Custom Trip</button>
       </header>
       
       <div class="container">
@@ -42,6 +43,25 @@
       </div>
     </div>
     
+    <!-- Custom Trip Modal -->
+    <div id="trip-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Load Custom Trip</h2>
+          <button class="close-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>Paste your trip plan in Markdown format below:</p>
+          <textarea id="trip-markdown" placeholder="Paste your trip Markdown here..."></textarea>
+          <div class="modal-actions">
+            <button id="copy-prompt-btn" class="secondary-btn">Copy LLM Prompt</button>
+            <button id="load-trip-submit" class="primary-btn">Load Trip</button>
+          </div>
+          <div id="trip-error" class="error-message"></div>
+        </div>
+      </div>
+    </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   </body>
 </html>
