@@ -647,9 +647,9 @@ function renderItinerary(tripDays) {
     dayCard.addEventListener('click', () => {
       currentSelectedDay = index // Update keyboard navigation state
       selectDay(index)
-      // On mobile, only show map - images are accessible via map pin popups
-      // On desktop, show images immediately
+      // Update keyboard focus visual indicator
       if (window.innerWidth > 768) {
+        updateKeyboardFocus()
         showLocationImages(day)
       }
     })
@@ -1509,23 +1509,34 @@ function setupKeyboardNavigation() {
   if (window.innerWidth <= 768) return
   
   const sidebar = document.querySelector('.sidebar')
-  const mapContainer = document.querySelector('.map-container')
   
-  // Make sidebar focusable
+  // Make sidebar focusable for visual feedback
   sidebar.setAttribute('tabindex', '0')
   
-  // Track when sidebar is focused
+  // Track when sidebar is focused for visual feedback
   sidebar.addEventListener('focus', () => {
     sidebarFocused = true
     sidebar.classList.add('keyboard-focused')
+    // Show keyboard hint more prominently when focused
+    const hint = document.getElementById('keyboard-hint')
+    if (hint) {
+      hint.style.background = '#e3f2fd'
+      hint.style.borderColor = '#2196f3'
+    }
   })
   
   sidebar.addEventListener('blur', () => {
     sidebarFocused = false
     sidebar.classList.remove('keyboard-focused')
+    // Reset keyboard hint appearance
+    const hint = document.getElementById('keyboard-hint')
+    if (hint) {
+      hint.style.background = '#f8f9fa'
+      hint.style.borderColor = '#e0e0e0'
+    }
   })
   
-  // Handle keyboard events
+  // Handle keyboard events globally
   document.addEventListener('keydown', handleKeyboardNavigation)
   
   // Handle window resize to enable/disable keyboard navigation
@@ -1539,25 +1550,27 @@ function setupKeyboardNavigation() {
 
 // Handle keyboard navigation
 function handleKeyboardNavigation(e) {
-  // Only handle keyboard navigation on desktop when sidebar is focused
-  if (window.innerWidth <= 768 || !sidebarFocused || !currentTripData) return
+  // Only handle keyboard navigation on desktop
+  if (window.innerWidth <= 768 || !currentTripData) return
   
   const slideshow = document.getElementById('image-slideshow')
   const isSlideshow = slideshow && slideshow.style.display === 'block'
   
+  // Check if we're in a text input or textarea
+  const activeElement = document.activeElement
+  if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+    return
+  }
+  
   switch(e.key) {
     case 'ArrowUp':
       e.preventDefault()
-      if (!isSlideshow) {
-        navigateToDay(currentSelectedDay - 1)
-      }
+      navigateToDay(currentSelectedDay - 1)
       break
       
     case 'ArrowDown':
       e.preventDefault()
-      if (!isSlideshow) {
-        navigateToDay(currentSelectedDay + 1)
-      }
+      navigateToDay(currentSelectedDay + 1)
       break
       
     case 'ArrowLeft':
@@ -1578,6 +1591,7 @@ function handleKeyboardNavigation(e) {
       e.preventDefault()
       if (!isSlideshow) {
         // Show images for current day
+        console.log('Showing images for day', currentSelectedDay)
         showLocationImages(currentTripData.days[currentSelectedDay])
       }
       break
@@ -1593,6 +1607,8 @@ function handleKeyboardNavigation(e) {
 
 // Navigate to a specific day via keyboard
 function navigateToDay(dayIndex) {
+  console.log('navigateToDay called with:', dayIndex, 'Current trip data:', currentTripData)
+  
   if (!currentTripData || !currentTripData.days) return
   
   // Clamp day index to valid range
