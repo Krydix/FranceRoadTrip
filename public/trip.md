@@ -9,6 +9,7 @@
 **Coordinates:** 52.5200, 13.4050
 **Camping:** Camping am Werbellinsee
 **Distance:** 60 km from Berlin
+**Images:** Brandenburg Gate Berlin, Reichstag Building Berlin, Berlin TV Tower, Museum Island Berlin
 
 Departure from Berlin at 15:00. Drive to first overnight stop.
 
@@ -23,6 +24,7 @@ Departure from Berlin at 15:00. Drive to first overnight stop.
 **Coordinates:** 51.2093, 3.2247
 **Camping:** Camping Klein Strand
 **Distance:** 520 km from Berlin
+**Images:** Belfry of Bruges, Bruges canals, Market Square Bruges, Church of Our Lady Bruges
 
 Full day in beautiful Bruges. Explore medieval architecture and canals.
 
@@ -37,6 +39,7 @@ Full day in beautiful Bruges. Explore medieval architecture and canals.
 **Coordinates:** 49.2765, -0.7032
 **Camping:** Camping Municipal de Bayeux
 **Distance:** 310 km from Bruges
+**Images:** Bayeux Cathedral, Bayeux Tapestry, Bayeux town center, Norman architecture Bayeux
 
 Drive to Normandy. Visit Bayeux and the famous tapestry.
 
@@ -51,6 +54,7 @@ Drive to Normandy. Visit Bayeux and the famous tapestry.
 **Coordinates:** 49.3697, -0.8507
 **Camping:** Camping de la Plage
 **Distance:** 15 km from Bayeux
+**Images:** Omaha Beach Memorial, American Cemetery Normandy, Pointe du Hoc, D-Day landing beaches
 
 D-Day beaches and historical sites. Visit Omaha Beach and American Cemetery.
 
@@ -65,6 +69,7 @@ D-Day beaches and historical sites. Visit Omaha Beach and American Cemetery.
 **Coordinates:** 48.6359, -1.5115
 **Camping:** Camping du Mont-Saint-Michel
 **Distance:** 120 km from Omaha Beach
+**Images:** Mont-Saint-Michel Abbey, Mont-Saint-Michel bay, Medieval abbey architecture, Tidal bay Mont-Saint-Michel
 
 Visit the iconic Mont-Saint-Michel abbey and surrounding bay.
 
@@ -79,6 +84,7 @@ Visit the iconic Mont-Saint-Michel abbey and surrounding bay.
 **Coordinates:** 48.6494, -2.0257
 **Camping:** Camping Aleth
 **Distance:** 50 km from Mont-Saint-Michel
+**Images:** Saint-Malo city walls, Fort National Saint-Malo, Saint-Malo harbor, Brittany coastline
 
 Explore the walled city of Saint-Malo and enjoy Brittany's coast.
 
@@ -88,11 +94,12 @@ Explore the walled city of Saint-Malo and enjoy Brittany's coast.
 - Beach walks
 - Seafood dining
 
-## Day 7: Return to Berlin, Germany
+## Day 7: Berlin, Germany
 **Date:** July 24, 2025
 **Coordinates:** 52.5200, 13.4050
 **Camping:** Hotel near airport
 **Distance:** 800 km to Berlin
+**Images:** Berlin skyline, Autobahn Germany, Brandenburg countryside, German architecture
 
 Long drive back to Berlin. Arrive evening before car return.
 

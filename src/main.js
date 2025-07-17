@@ -168,6 +168,7 @@ function parseTripMarkdown(markdown) {
         coordinates: [],
         camping: '',
         distance: '',
+        images: [],
         description: '',
         activities: []
       }
@@ -248,6 +249,16 @@ function parseTripMarkdown(markdown) {
       currentDay.distance = line.includes('- **Distance:**') 
         ? line.substring(15).trim() 
         : line.substring(13).trim()
+    }
+    else if (currentDay && (line.startsWith('**Images:**') || line.startsWith('- **Images:**'))) {
+      const imagesStr = line.includes('- **Images:**') 
+        ? line.substring(13).trim() 
+        : line.substring(11).trim()
+      
+      // Parse comma-separated image locations
+      if (imagesStr) {
+        currentDay.images = imagesStr.split(',').map(img => img.trim()).filter(img => img.length > 0)
+      }
     }
     else if (currentDay && line.startsWith('**Activities:**')) {
       currentSection = 'activities'
@@ -608,7 +619,7 @@ function renderItinerary(tripDays) {
     
     dayCard.addEventListener('click', () => {
       selectDay(index)
-      showLocationImages(day.city, day.country)
+      showLocationImages(day)
     })
     
     itineraryContainer.appendChild(dayCard)
@@ -650,7 +661,7 @@ function addMapMarkers(tripDays) {
         <p>${day.description}</p>
         <div class="popup-images">
           <div style="text-align: center; margin: 10px 0;">
-            <a href="#" class="view-all-images" onclick="showLocationImages('${day.city}', '${day.country}')">
+            <a href="#" class="view-all-images" onclick="showLocationImagesForDay(${index})">
               📸 View Images
             </a>
           </div>
@@ -910,7 +921,7 @@ async function getLocationImages(location, country) {
 }
 
 // Show location images in slideshow
-async function showLocationImages(location, country) {
+async function showLocationImages(locationOrDay, country) {
   const slideshow = document.getElementById('image-slideshow')
   const slidesContainer = document.getElementById('slides-container')
   const dotsContainer = document.getElementById('slideshow-dots')
@@ -923,7 +934,26 @@ async function showLocationImages(location, country) {
   dotsContainer.innerHTML = ''
   
   try {
-    currentImages = await getLocationImages(location, country)
+    let images = []
+    
+    // Check if we have a day object with specific image locations
+    if (typeof locationOrDay === 'object' && locationOrDay.images && locationOrDay.images.length > 0) {
+      // Use specific image locations from the Images field
+      for (const imageLocation of locationOrDay.images) {
+        const locationImages = await getLocationImages(imageLocation, locationOrDay.country)
+        // Take first image from each location search
+        if (locationImages.length > 0) {
+          images.push(locationImages[0])
+        }
+      }
+    } else {
+      // Fallback to general location search
+      const location = typeof locationOrDay === 'string' ? locationOrDay : locationOrDay.city
+      const countryName = country || (typeof locationOrDay === 'object' ? locationOrDay.country : '')
+      images = await getLocationImages(location, countryName)
+    }
+    
+    currentImages = images
     currentSlideIndex = 0
     
     // Hide loading indicator
@@ -993,11 +1023,19 @@ function closeSlideshow() {
   document.querySelector('.loading-indicator').style.display = 'block'
 }
 
+// Helper function to show images for a specific day by index
+function showLocationImagesForDay(dayIndex) {
+  if (currentTripData && currentTripData.days && currentTripData.days[dayIndex]) {
+    showLocationImages(currentTripData.days[dayIndex])
+  }
+}
+
 // Global functions for HTML onclick events
 window.changeSlide = changeSlide
 window.goToSlide = goToSlide
 window.closeSlideshow = closeSlideshow
 window.showLocationImages = showLocationImages
+window.showLocationImagesForDay = showLocationImagesForDay
 
 // Basic Wikimedia Commons search as final fallback
 async function fetchBasicWikimediaImages(location, country) {
