@@ -10,12 +10,15 @@ let currentTripData = null
 let imageCache = new Map() // Cache for preloaded images
 let preloadingPromises = new Map() // Track ongoing preloading
 let preloadQueue = [] // Queue for background preloading
+let currentSelectedDay = 0 // Track currently selected day for keyboard navigation
+let sidebarFocused = false // Track if sidebar has focus for keyboard navigation
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
   initializeMap()
   loadAndRenderTrip()
   setupModalHandlers()
+  setupKeyboardNavigation()
   
   // Add mobile enhancements
   addTouchGestures()
@@ -638,16 +641,14 @@ function renderItinerary(tripDays) {
         <h4>🏕️ ${day.camping}</h4>
         <p>${day.description}</p>
         <div class="distance">${day.distance}</div>
-        <button class="view-images-btn" onclick="showLocationImages(currentTripData.days[${index}]); event.stopPropagation();">
-          📸 View Images
-        </button>
       </div>
     `
     
     dayCard.addEventListener('click', () => {
+      currentSelectedDay = index // Update keyboard navigation state
       selectDay(index)
-      // On mobile, only show map - images are shown via button
-      // On desktop, show images immediately (existing behavior)
+      // On mobile, only show map - images are accessible via map pin popups
+      // On desktop, show images immediately
       if (window.innerWidth > 768) {
         showLocationImages(day)
       }
@@ -655,6 +656,12 @@ function renderItinerary(tripDays) {
     
     itineraryContainer.appendChild(dayCard)
   })
+  
+  // Initialize keyboard navigation state
+  currentSelectedDay = 0
+  if (window.innerWidth > 768) {
+    updateKeyboardFocus()
+  }
 }
 
 // Select a specific day
@@ -1494,4 +1501,118 @@ function openManualCopyModal(textToCopy) {
     }
   }
   document.addEventListener('keydown', escapeHandler)
+}
+
+// Setup keyboard navigation for desktop
+function setupKeyboardNavigation() {
+  // Only enable keyboard navigation on desktop
+  if (window.innerWidth <= 768) return
+  
+  const sidebar = document.querySelector('.sidebar')
+  const mapContainer = document.querySelector('.map-container')
+  
+  // Make sidebar focusable
+  sidebar.setAttribute('tabindex', '0')
+  
+  // Track when sidebar is focused
+  sidebar.addEventListener('focus', () => {
+    sidebarFocused = true
+    sidebar.classList.add('keyboard-focused')
+  })
+  
+  sidebar.addEventListener('blur', () => {
+    sidebarFocused = false
+    sidebar.classList.remove('keyboard-focused')
+  })
+  
+  // Handle keyboard events
+  document.addEventListener('keydown', handleKeyboardNavigation)
+  
+  // Handle window resize to enable/disable keyboard navigation
+  window.addEventListener('resize', () => {
+    if (window.innerWidth <= 768) {
+      sidebarFocused = false
+      sidebar.classList.remove('keyboard-focused')
+    }
+  })
+}
+
+// Handle keyboard navigation
+function handleKeyboardNavigation(e) {
+  // Only handle keyboard navigation on desktop when sidebar is focused
+  if (window.innerWidth <= 768 || !sidebarFocused || !currentTripData) return
+  
+  const slideshow = document.getElementById('image-slideshow')
+  const isSlideshow = slideshow && slideshow.style.display === 'block'
+  
+  switch(e.key) {
+    case 'ArrowUp':
+      e.preventDefault()
+      if (!isSlideshow) {
+        navigateToDay(currentSelectedDay - 1)
+      }
+      break
+      
+    case 'ArrowDown':
+      e.preventDefault()
+      if (!isSlideshow) {
+        navigateToDay(currentSelectedDay + 1)
+      }
+      break
+      
+    case 'ArrowLeft':
+      e.preventDefault()
+      if (isSlideshow) {
+        changeSlide(-1)
+      }
+      break
+      
+    case 'ArrowRight':
+      e.preventDefault()
+      if (isSlideshow) {
+        changeSlide(1)
+      }
+      break
+      
+    case 'Enter':
+      e.preventDefault()
+      if (!isSlideshow) {
+        // Show images for current day
+        showLocationImages(currentTripData.days[currentSelectedDay])
+      }
+      break
+      
+    case 'Escape':
+      e.preventDefault()
+      if (isSlideshow) {
+        closeSlideshow()
+      }
+      break
+  }
+}
+
+// Navigate to a specific day via keyboard
+function navigateToDay(dayIndex) {
+  if (!currentTripData || !currentTripData.days) return
+  
+  // Clamp day index to valid range
+  dayIndex = Math.max(0, Math.min(dayIndex, currentTripData.days.length - 1))
+  
+  currentSelectedDay = dayIndex
+  selectDay(dayIndex)
+  
+  // Update visual focus indicator
+  updateKeyboardFocus()
+}
+
+// Update visual focus indicator for keyboard navigation
+function updateKeyboardFocus() {
+  const dayCards = document.querySelectorAll('.day-card')
+  dayCards.forEach((card, index) => {
+    if (index === currentSelectedDay) {
+      card.classList.add('keyboard-selected')
+    } else {
+      card.classList.remove('keyboard-selected')
+    }
+  })
 }

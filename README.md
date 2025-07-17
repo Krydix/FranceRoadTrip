@@ -77,6 +77,29 @@ A dynamic, interactive road trip planner web application for exploring France wi
 - **Build**: `npm run build` - Creates optimized production build in `dist/`
 - **Preview**: `npm run preview` - Preview production build locally
 
+## ⌨️ Keyboard Navigation (Desktop)
+
+The application includes full keyboard navigation support for desktop users:
+
+### Getting Started
+1. **Focus the Sidebar**: Click on the sidebar or press `Tab` to focus it
+2. **Navigate Between Days**: Use `↑` and `↓` arrow keys to move between days
+3. **View Images**: Press `Enter` to open the image slideshow for the selected day
+4. **Navigate Images**: Use `←` and `→` arrow keys to navigate through images
+5. **Close Slideshow**: Press `Escape` to close the image slideshow
+
+### Visual Indicators
+- **Green Border**: Shows the currently selected day via keyboard
+- **Blue Outline**: Indicates when the sidebar has keyboard focus
+- **Smooth Transitions**: Automatic map centering and marker highlighting
+
+### Key Bindings
+- `↑` / `↓` - Navigate between days (when sidebar focused)
+- `←` / `→` - Previous/next image (when slideshow open)
+- `Enter` - Open image slideshow for selected day
+- `Escape` - Close image slideshow
+- `Tab` - Focus sidebar for keyboard navigation
+
 ## 📋 Trip Format
 
 ### Markdown Structure
