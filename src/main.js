@@ -392,19 +392,83 @@ function setupModalHandlers() {
       });
       
       const updatedPrompt = promptText.replace(
-        /begins on July 17, 2025( \(today's date\))?/g, 
-        `begins on ${formattedDate} (today's date)`
+        /July 17, 2025/g, 
+        formattedDate
       )
       
-      // Copy to clipboard
-      await navigator.clipboard.writeText(updatedPrompt)
-      
-      // Show feedback
-      const originalText = copyPromptBtn.textContent
-      copyPromptBtn.textContent = 'Copied!'
-      setTimeout(() => {
-        copyPromptBtn.textContent = originalText
-      }, 2000)
+      // Copy to clipboard with Safari fallback
+      try {
+        // Try modern clipboard API first
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(updatedPrompt)
+        } else {
+          // Fallback for Safari and older browsers
+          const textArea = document.createElement('textarea')
+          textArea.value = updatedPrompt
+          textArea.style.position = 'fixed'
+          textArea.style.left = '-999999px'
+          textArea.style.top = '-999999px'
+          textArea.style.opacity = '0'
+          document.body.appendChild(textArea)
+          textArea.focus()
+          textArea.select()
+          
+          const successful = document.execCommand('copy')
+          document.body.removeChild(textArea)
+          
+          if (!successful) {
+            throw new Error('execCommand copy failed')
+          }
+        }
+        
+        // Show feedback
+        const originalText = copyPromptBtn.textContent
+        copyPromptBtn.textContent = 'Copied!'
+        copyPromptBtn.classList.add('copied')
+        setTimeout(() => {
+          copyPromptBtn.textContent = originalText
+          copyPromptBtn.classList.remove('copied')
+        }, 2000)
+        
+      } catch (clipboardError) {
+        console.error('Clipboard operation failed:', clipboardError)
+        
+        // Final fallback: show the text in a modal for manual copy
+        const fallbackModal = document.createElement('div')
+        fallbackModal.style.position = 'fixed'
+        fallbackModal.style.top = '0'
+        fallbackModal.style.left = '0'
+        fallbackModal.style.width = '100%'
+        fallbackModal.style.height = '100%'
+        fallbackModal.style.backgroundColor = 'rgba(0,0,0,0.5)'
+        fallbackModal.style.zIndex = '10000'
+        fallbackModal.style.display = 'flex'
+        fallbackModal.style.alignItems = 'center'
+        fallbackModal.style.justifyContent = 'center'
+        
+        const fallbackContent = document.createElement('div')
+        fallbackContent.style.backgroundColor = 'white'
+        fallbackContent.style.padding = '20px'
+        fallbackContent.style.borderRadius = '8px'
+        fallbackContent.style.maxWidth = '80%'
+        fallbackContent.style.maxHeight = '80%'
+        fallbackContent.style.overflow = 'auto'
+        
+        fallbackContent.innerHTML = `
+          <h3>Copy Prompt Template</h3>
+          <p>Please select all text below and copy manually (Cmd+C or Ctrl+C):</p>
+          <textarea readonly style="width: 100%; height: 300px; margin: 10px 0; font-family: monospace; font-size: 12px;">${updatedPrompt}</textarea>
+          <button onclick="this.parentElement.parentElement.remove()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button>
+        `
+        
+        fallbackModal.appendChild(fallbackContent)
+        document.body.appendChild(fallbackModal)
+        
+        // Select the text in the textarea
+        const textarea = fallbackContent.querySelector('textarea')
+        textarea.focus()
+        textarea.select()
+      }
     } catch (error) {
       console.error('Error copying prompt:', error)
       showError('Failed to copy prompt template')
