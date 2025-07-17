@@ -1,0 +1,33 @@
+{
+  "name": "france-road-trip",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A road trip planner for a 7-day camping trip from Berlin to Normandy and Brittany, France",
+  "main": "src/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --base='/FranceRoadTrip/'",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4"
+  },
+  "devDependencies": {
+    "vite": "^7.0.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Krydix/FranceRoadTrip.git"
+  },
+  "keywords": [
+    "road-trip",
+    "travel",
+    "maps",
+    "leaflet",
+    "france",
+    "camping"
+  ],
+  "author": "",
+  "license": "MIT"
+}
