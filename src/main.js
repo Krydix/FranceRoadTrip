@@ -7,6 +7,9 @@ let currentSlideIndex = 0
 let currentImages = []
 let markers = []
 let currentTripData = null
+let imageCache = new Map() // Cache for preloaded images
+let preloadingPromises = new Map() // Track ongoing preloading
+let preloadQueue = [] // Queue for background preloading
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
@@ -341,6 +344,9 @@ function renderPage(tripData) {
   // Add map markers and draw route
   addMapMarkers(tripData.days)
   drawRoute(tripData.days)
+  
+  // Start background image preloading for all days
+  startBackgroundImagePreloading(tripData.days)
 }
 
 // Setup modal event handlers
@@ -449,7 +455,51 @@ function setupModalHandlers() {
       }
     } catch (error) {
       console.error('Error loading prompt template:', error)
-      showError('Failed to load prompt template')
+      
+      // Show error message and offer manual copy option
+      showError('Failed to load prompt template. Please copy the text manually.')
+      
+      // Try to provide a basic prompt template as fallback
+      const basicPrompt = `# Road Trip Generation Prompt
+
+You are an expert road trip planner. Generate a road trip itinerary in Markdown format.
+
+## Instructions
+- Use destination-based day titles: "Day 1: Prague, Czech Republic" (NOT "Day 1: Berlin to Prague")
+- Include GPS coordinates for each day
+- Add specific landmarks in the Images field for photo sourcing
+- The current date is ${new Date().toLocaleDateString('en-US', {
+  year: 'numeric',
+  month: 'long', 
+  day: 'numeric'
+})}
+
+## Format
+\`\`\`
+# Trip Title
+
+**Duration:** X days
+**Dates:** Start - End
+**Type:** Trip Type
+
+## Day 1: City, Country
+**Date:** Full Date
+**Coordinates:** lat, lng
+**Camping:** Campsite Name
+**Distance:** Distance
+**Images:** Landmark 1, Landmark 2, Building Name
+
+Description of activities.
+
+**Activities:**
+- Activity 1
+- Activity 2
+\`\`\`
+
+Now generate a trip based on the user's request:`
+
+      // Open manual copy modal with basic prompt
+      openManualCopyModal(basicPrompt)
     }
   })
   
@@ -917,7 +967,26 @@ async function showLocationImages(locationOrDay, country) {
       imageLocations = [location]
     }
     
-    // Load first image immediately
+    // Create cache key for this location
+    const cacheKey = `${location}_${countryName}_${imageLocations.join('|')}`
+    
+    // Check if images are already cached
+    if (imageCache.has(cacheKey)) {
+      console.log('Using cached images for:', location)
+      const cachedImages = imageCache.get(cacheKey)
+      displayCachedImages(cachedImages)
+      return
+    }
+    
+    // Check if preloading is in progress
+    if (preloadingPromises.has(cacheKey)) {
+      console.log('Waiting for preloading to complete for:', location)
+      const images = await preloadingPromises.get(cacheKey)
+      displayCachedImages(images)
+      return
+    }
+    
+    // Load first image immediately for instant display
     console.log('Loading first image for:', imageLocations[0])
     const firstImages = await getLocationImages(imageLocations[0], countryName)
     
@@ -933,7 +1002,7 @@ async function showLocationImages(locationOrDay, country) {
       createDot(0, true)
       
       // Load remaining images progressively in background
-      loadRemainingImagesInBackground(imageLocations, countryName, location, firstImages.slice(1))
+      loadRemainingImagesInBackground(imageLocations, countryName, location, firstImages.slice(1), cacheKey)
     } else {
       throw new Error('No images found for location')
     }
@@ -942,6 +1011,23 @@ async function showLocationImages(locationOrDay, country) {
     console.error('Error loading images:', error)
     loadingIndicator.innerHTML = '<div>Error loading images</div>'
   }
+}
+
+// Display cached images immediately
+function displayCachedImages(images) {
+  const loadingIndicator = document.querySelector('.loading-indicator')
+  
+  currentImages = images
+  currentSlideIndex = 0
+  
+  // Hide loading indicator
+  loadingIndicator.style.display = 'none'
+  
+  // Create all slides and dots
+  images.forEach((image, index) => {
+    createSlide(image, index, index === 0)
+    createDot(index, index === 0)
+  })
 }
 
 // Helper function to create a slide
@@ -966,8 +1052,8 @@ function createDot(index, isActive = false) {
 }
 
 // Load remaining images progressively in background
-async function loadRemainingImagesInBackground(imageLocations, country, location, remainingFirstLocationImages) {
-  let allImages = [...remainingFirstLocationImages]
+async function loadRemainingImagesInBackground(imageLocations, country, location, remainingFirstLocationImages, cacheKey) {
+  let allImages = [currentImages[0], ...remainingFirstLocationImages]
   
   // Load images from other specified locations
   for (let i = 1; i < imageLocations.length; i++) {
@@ -975,32 +1061,45 @@ async function loadRemainingImagesInBackground(imageLocations, country, location
       const locationImages = await getLocationImages(imageLocations[i], country)
       allImages.push(...locationImages)
       
-      // Add each new image as it loads
-      locationImages.forEach(image => {
-        const newIndex = currentImages.length
-        currentImages.push(image)
-        createSlide(image, newIndex)
-        createDot(newIndex)
-      })
+      // Add each new image as it loads (if slideshow is still open)
+      const slideshow = document.getElementById('image-slideshow')
+      if (slideshow && slideshow.style.display === 'block') {
+        locationImages.forEach(image => {
+          const newIndex = currentImages.length
+          currentImages.push(image)
+          createSlide(image, newIndex)
+          createDot(newIndex)
+        })
+      }
     } catch (error) {
       console.error(`Error loading images for ${imageLocations[i]}:`, error)
     }
   }
   
   // If we don't have enough images and we haven't searched the main location yet
-  if (currentImages.length < 3 && !imageLocations.includes(location)) {
+  if (allImages.length < 3 && !imageLocations.includes(location)) {
     try {
       const mainLocationImages = await getLocationImages(location, country)
-      mainLocationImages.forEach(image => {
-        const newIndex = currentImages.length
-        currentImages.push(image)
-        createSlide(image, newIndex)
-        createDot(newIndex)
-      })
+      allImages.push(...mainLocationImages)
+      
+      // Add to current slideshow if still open
+      const slideshow = document.getElementById('image-slideshow')
+      if (slideshow && slideshow.style.display === 'block') {
+        mainLocationImages.forEach(image => {
+          const newIndex = currentImages.length
+          currentImages.push(image)
+          createSlide(image, newIndex)
+          createDot(newIndex)
+        })
+      }
     } catch (error) {
       console.error(`Error loading images for main location ${location}:`, error)
     }
   }
+  
+  // Cache the complete set of images
+  imageCache.set(cacheKey, allImages)
+  console.log(`Cached ${allImages.length} images for ${location}`)
 }
 
 // Change slide
@@ -1042,6 +1141,106 @@ function updateSlideshow() {
 function closeSlideshow() {
   document.getElementById('image-slideshow').style.display = 'none'
   document.querySelector('.loading-indicator').style.display = 'block'
+}
+
+// Start background image preloading for all trip days
+function startBackgroundImagePreloading(days) {
+  console.log('Starting background image preloading for', days.length, 'days')
+  
+  // Clear existing preload queue
+  preloadQueue = []
+  
+  // Add all days to preload queue
+  days.forEach((day, index) => {
+    preloadQueue.push({ day, index, priority: index === 0 ? 'high' : 'low' })
+  })
+  
+  // Start preloading with a small delay to avoid blocking the main thread
+  setTimeout(() => {
+    processPreloadQueue()
+  }, 100)
+}
+
+// Process the preload queue
+async function processPreloadQueue() {
+  // Sort queue by priority (high priority first)
+  preloadQueue.sort((a, b) => a.priority === 'high' ? -1 : 1)
+  
+  for (const item of preloadQueue) {
+    await preloadImagesForDay(item.day, item.index)
+    
+    // Small delay between requests to avoid overwhelming the API
+    await new Promise(resolve => setTimeout(resolve, 200))
+  }
+}
+
+// Preload images for a specific day
+async function preloadImagesForDay(day, dayIndex) {
+  try {
+    let imageLocations = []
+    let location = day.city
+    let country = day.country
+    
+    // Determine what to search for
+    if (day.images && day.images.length > 0) {
+      imageLocations = day.images
+    } else {
+      imageLocations = [location]
+    }
+    
+    // Create cache key
+    const cacheKey = `${location}_${country}_${imageLocations.join('|')}`
+    
+    // Skip if already cached or being preloaded
+    if (imageCache.has(cacheKey) || preloadingPromises.has(cacheKey)) {
+      return
+    }
+    
+    console.log(`Preloading images for Day ${dayIndex + 1}: ${location}`)
+    
+    // Create promise for this preload operation
+    const preloadPromise = preloadImagesForLocation(imageLocations, country, location)
+    preloadingPromises.set(cacheKey, preloadPromise)
+    
+    // Wait for preload to complete
+    const images = await preloadPromise
+    
+    // Cache the results
+    imageCache.set(cacheKey, images)
+    preloadingPromises.delete(cacheKey)
+    
+    console.log(`Preloaded ${images.length} images for ${location}`)
+    
+  } catch (error) {
+    console.error(`Error preloading images for ${day.city}:`, error)
+  }
+}
+
+// Preload images for a specific location
+async function preloadImagesForLocation(imageLocations, country, location) {
+  let allImages = []
+  
+  // Load images from all specified locations
+  for (const imageLocation of imageLocations) {
+    try {
+      const locationImages = await getLocationImages(imageLocation, country)
+      allImages.push(...locationImages)
+    } catch (error) {
+      console.error(`Error loading images for ${imageLocation}:`, error)
+    }
+  }
+  
+  // If we don't have enough images and we haven't searched the main location yet
+  if (allImages.length < 3 && !imageLocations.includes(location)) {
+    try {
+      const mainLocationImages = await getLocationImages(location, country)
+      allImages.push(...mainLocationImages)
+    } catch (error) {
+      console.error(`Error loading images for main location ${location}:`, error)
+    }
+  }
+  
+  return allImages
 }
 
 // Helper function to show images for a specific day by index
