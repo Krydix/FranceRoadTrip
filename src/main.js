@@ -353,14 +353,21 @@ function renderPage(tripData) {
 function setupModalHandlers() {
   const modal = document.getElementById('trip-modal')
   const loadTripBtn = document.getElementById('load-trip-btn')
+  const mobileLoadTripBtn = document.getElementById('mobile-load-trip-btn')
   const closeBtn = document.querySelector('.close-modal')
   const copyPromptBtn = document.getElementById('copy-prompt-btn')
   const loadTripSubmit = document.getElementById('load-trip-submit')
   const tripTextarea = document.getElementById('trip-markdown')
   const errorDiv = document.getElementById('trip-error')
   
-  // Open modal
+  // Open modal (desktop)
   loadTripBtn.addEventListener('click', () => {
+    modal.style.display = 'block'
+    tripTextarea.focus()
+  })
+  
+  // Open modal (mobile)
+  mobileLoadTripBtn.addEventListener('click', () => {
     modal.style.display = 'block'
     tripTextarea.focus()
   })
@@ -631,12 +638,19 @@ function renderItinerary(tripDays) {
         <h4>🏕️ ${day.camping}</h4>
         <p>${day.description}</p>
         <div class="distance">${day.distance}</div>
+        <button class="view-images-btn" onclick="showLocationImages(currentTripData.days[${index}]); event.stopPropagation();">
+          📸 View Images
+        </button>
       </div>
     `
     
     dayCard.addEventListener('click', () => {
       selectDay(index)
-      showLocationImages(day)
+      // On mobile, only show map - images are shown via button
+      // On desktop, show images immediately (existing behavior)
+      if (window.innerWidth > 768) {
+        showLocationImages(day)
+      }
     })
     
     itineraryContainer.appendChild(dayCard)

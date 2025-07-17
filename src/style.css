@@ -465,6 +465,16 @@ body {
 }
 
 /* Responsive design */
+/* Hide mobile load trip button on desktop */
+.mobile-load-trip-btn {
+    display: none;
+}
+
+/* Image view button for day cards */
+.view-images-btn {
+    display: none; /* Hidden on desktop */
+}
+
 @media (max-width: 768px) {
     .header {
         display: none; /* Hide main header on mobile to save space */
@@ -514,6 +524,32 @@ body {
         opacity: 0.9;
     }
     
+    /* Mobile load trip button */
+    .mobile-load-trip-btn {
+        display: block;
+        width: calc(100% - 2rem);
+        margin: 0 1rem 1rem 1rem;
+        padding: 0.75rem 1rem;
+        background: #28a745;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: center;
+    }
+    
+    .mobile-load-trip-btn:hover {
+        background: #218838;
+        transform: translateY(-1px);
+    }
+    
+    .mobile-load-trip-btn:active {
+        transform: translateY(0);
+    }
+    
     /* Add padding to the itinerary container */
     #itinerary {
         padding: 1rem;
@@ -540,6 +576,30 @@ body {
     
     .day-details p {
         font-size: 0.7rem;
+    }
+    
+    /* Show View Images button on mobile */
+    .view-images-btn {
+        display: block;
+        width: 100%;
+        padding: 0.5rem;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        margin-top: 0.5rem;
+    }
+    
+    .view-images-btn:hover {
+        background: #0056b3;
+    }
+    
+    .view-images-btn:active {
+        transform: translateY(1px);
     }
     
     .map-container {
