@@ -444,45 +444,12 @@ function setupModalHandlers() {
       } catch (clipboardError) {
         console.error('Clipboard operation failed:', clipboardError)
         
-        // Final fallback: show the text in a modal for manual copy
-        const fallbackModal = document.createElement('div')
-        fallbackModal.style.position = 'fixed'
-        fallbackModal.style.top = '0'
-        fallbackModal.style.left = '0'
-        fallbackModal.style.width = '100%'
-        fallbackModal.style.height = '100%'
-        fallbackModal.style.backgroundColor = 'rgba(0,0,0,0.5)'
-        fallbackModal.style.zIndex = '10000'
-        fallbackModal.style.display = 'flex'
-        fallbackModal.style.alignItems = 'center'
-        fallbackModal.style.justifyContent = 'center'
-        
-        const fallbackContent = document.createElement('div')
-        fallbackContent.style.backgroundColor = 'white'
-        fallbackContent.style.padding = '20px'
-        fallbackContent.style.borderRadius = '8px'
-        fallbackContent.style.maxWidth = '80%'
-        fallbackContent.style.maxHeight = '80%'
-        fallbackContent.style.overflow = 'auto'
-        
-        fallbackContent.innerHTML = `
-          <h3>Copy Prompt Template</h3>
-          <p>Please select all text below and copy manually (Cmd+C or Ctrl+C):</p>
-          <textarea readonly style="width: 100%; height: 300px; margin: 10px 0; font-family: monospace; font-size: 12px;">${updatedPrompt}</textarea>
-          <button onclick="this.parentElement.parentElement.remove()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button>
-        `
-        
-        fallbackModal.appendChild(fallbackContent)
-        document.body.appendChild(fallbackModal)
-        
-        // Select the text in the textarea
-        const textarea = fallbackContent.querySelector('textarea')
-        textarea.focus()
-        textarea.select()
+        // Automatically open manual copy modal when clipboard fails
+        openManualCopyModal(updatedPrompt)
       }
     } catch (error) {
-      console.error('Error copying prompt:', error)
-      showError('Failed to copy prompt template')
+      console.error('Error loading prompt template:', error)
+      showError('Failed to load prompt template')
     }
   })
   
@@ -920,7 +887,7 @@ async function getLocationImages(location, country) {
   }]
 }
 
-// Show location images in slideshow
+// Show location images in slideshow with lazy loading
 async function showLocationImages(locationOrDay, country) {
   const slideshow = document.getElementById('image-slideshow')
   const slidesContainer = document.getElementById('slides-container')
@@ -934,51 +901,105 @@ async function showLocationImages(locationOrDay, country) {
   dotsContainer.innerHTML = ''
   
   try {
-    let images = []
+    let imageLocations = []
+    let location, countryName
     
-    // Check if we have a day object with specific image locations
+    // Determine what to search for
     if (typeof locationOrDay === 'object' && locationOrDay.images && locationOrDay.images.length > 0) {
       // Use specific image locations from the Images field
-      for (const imageLocation of locationOrDay.images) {
-        const locationImages = await getLocationImages(imageLocation, locationOrDay.country)
-        // Take first image from each location search
-        if (locationImages.length > 0) {
-          images.push(locationImages[0])
-        }
-      }
+      imageLocations = locationOrDay.images
+      location = locationOrDay.city
+      countryName = locationOrDay.country
     } else {
       // Fallback to general location search
-      const location = typeof locationOrDay === 'string' ? locationOrDay : locationOrDay.city
-      const countryName = country || (typeof locationOrDay === 'object' ? locationOrDay.country : '')
-      images = await getLocationImages(location, countryName)
+      location = typeof locationOrDay === 'string' ? locationOrDay : locationOrDay.city
+      countryName = country || (typeof locationOrDay === 'object' ? locationOrDay.country : '')
+      imageLocations = [location]
     }
     
-    currentImages = images
-    currentSlideIndex = 0
+    // Load first image immediately
+    console.log('Loading first image for:', imageLocations[0])
+    const firstImages = await getLocationImages(imageLocations[0], countryName)
     
-    // Hide loading indicator
-    loadingIndicator.style.display = 'none'
-    
-    // Create slides
-    currentImages.forEach((image, index) => {
-      const slide = document.createElement('div')
-      slide.className = `slide ${index === 0 ? 'active' : ''}`
-      slide.innerHTML = `
-        <img src="${image.url}" alt="${image.alt}" onerror="this.style.display='none'">
-        <div class="slide-caption">${image.caption}</div>
-      `
-      slidesContainer.appendChild(slide)
+    if (firstImages.length > 0) {
+      currentImages = [firstImages[0]] // Start with just the first image
+      currentSlideIndex = 0
       
-      // Create dot
-      const dot = document.createElement('div')
-      dot.className = `dot ${index === 0 ? 'active' : ''}`
-      dot.addEventListener('click', () => goToSlide(index))
-      dotsContainer.appendChild(dot)
-    })
+      // Hide loading indicator
+      loadingIndicator.style.display = 'none'
+      
+      // Create first slide
+      createSlide(firstImages[0], 0, true)
+      createDot(0, true)
+      
+      // Load remaining images progressively in background
+      loadRemainingImagesInBackground(imageLocations, countryName, location, firstImages.slice(1))
+    } else {
+      throw new Error('No images found for location')
+    }
     
   } catch (error) {
     console.error('Error loading images:', error)
     loadingIndicator.innerHTML = '<div>Error loading images</div>'
+  }
+}
+
+// Helper function to create a slide
+function createSlide(image, index, isActive = false) {
+  const slidesContainer = document.getElementById('slides-container')
+  const slide = document.createElement('div')
+  slide.className = `slide ${isActive ? 'active' : ''}`
+  slide.innerHTML = `
+    <img src="${image.url}" alt="${image.alt}" onerror="this.style.display='none'">
+    <div class="slide-caption">${image.caption}</div>
+  `
+  slidesContainer.appendChild(slide)
+}
+
+// Helper function to create a dot
+function createDot(index, isActive = false) {
+  const dotsContainer = document.getElementById('slideshow-dots')
+  const dot = document.createElement('div')
+  dot.className = `dot ${isActive ? 'active' : ''}`
+  dot.addEventListener('click', () => goToSlide(index))
+  dotsContainer.appendChild(dot)
+}
+
+// Load remaining images progressively in background
+async function loadRemainingImagesInBackground(imageLocations, country, location, remainingFirstLocationImages) {
+  let allImages = [...remainingFirstLocationImages]
+  
+  // Load images from other specified locations
+  for (let i = 1; i < imageLocations.length; i++) {
+    try {
+      const locationImages = await getLocationImages(imageLocations[i], country)
+      allImages.push(...locationImages)
+      
+      // Add each new image as it loads
+      locationImages.forEach(image => {
+        const newIndex = currentImages.length
+        currentImages.push(image)
+        createSlide(image, newIndex)
+        createDot(newIndex)
+      })
+    } catch (error) {
+      console.error(`Error loading images for ${imageLocations[i]}:`, error)
+    }
+  }
+  
+  // If we don't have enough images and we haven't searched the main location yet
+  if (currentImages.length < 3 && !imageLocations.includes(location)) {
+    try {
+      const mainLocationImages = await getLocationImages(location, country)
+      mainLocationImages.forEach(image => {
+        const newIndex = currentImages.length
+        currentImages.push(image)
+        createSlide(image, newIndex)
+        createDot(newIndex)
+      })
+    } catch (error) {
+      console.error(`Error loading images for main location ${location}:`, error)
+    }
   }
 }
 
@@ -1189,4 +1210,75 @@ function handleZoomControlsOnResize() {
       leafletZoom.style.display = 'block'
     }
   }
+}
+
+// Open manual copy modal when clipboard fails
+function openManualCopyModal(textToCopy) {
+  const fallbackModal = document.createElement('div')
+  fallbackModal.className = 'manual-copy-modal'
+  fallbackModal.style.position = 'fixed'
+  fallbackModal.style.top = '0'
+  fallbackModal.style.left = '0'
+  fallbackModal.style.width = '100%'
+  fallbackModal.style.height = '100%'
+  fallbackModal.style.backgroundColor = 'rgba(0,0,0,0.5)'
+  fallbackModal.style.zIndex = '10000'
+  fallbackModal.style.display = 'flex'
+  fallbackModal.style.alignItems = 'center'
+  fallbackModal.style.justifyContent = 'center'
+  
+  const fallbackContent = document.createElement('div')
+  fallbackContent.style.backgroundColor = 'white'
+  fallbackContent.style.padding = '20px'
+  fallbackContent.style.borderRadius = '8px'
+  fallbackContent.style.maxWidth = '90%'
+  fallbackContent.style.maxHeight = '80%'
+  fallbackContent.style.overflow = 'auto'
+  fallbackContent.style.boxShadow = '0 4px 20px rgba(0,0,0,0.3)'
+  
+  fallbackContent.innerHTML = `
+    <div style="margin-bottom: 15px;">
+      <h3 style="margin: 0 0 10px 0; color: #333; font-size: 1.2rem;">Copy Prompt Template</h3>
+      <p style="margin: 0; color: #666; font-size: 0.9rem;">The text below is already selected. Press Cmd+C (Mac) or Ctrl+C (Windows) to copy:</p>
+    </div>
+    <textarea readonly style="width: 100%; height: 300px; margin: 10px 0; font-family: monospace; font-size: 12px; border: 1px solid #ddd; border-radius: 4px; padding: 8px; background: #f9f9f9;" id="manual-copy-textarea">${textToCopy}</textarea>
+    <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 15px;">
+      <button onclick="this.parentElement.parentElement.parentElement.remove()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">Close</button>
+      <button onclick="selectAllText()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">Select All</button>
+    </div>
+  `
+  
+  fallbackModal.appendChild(fallbackContent)
+  document.body.appendChild(fallbackModal)
+  
+  // Auto-select the text
+  const textarea = fallbackContent.querySelector('#manual-copy-textarea')
+  setTimeout(() => {
+    textarea.focus()
+    textarea.select()
+  }, 100)
+  
+  // Add global function to select all text
+  window.selectAllText = function() {
+    textarea.focus()
+    textarea.select()
+  }
+  
+  // Close modal when clicking outside
+  fallbackModal.addEventListener('click', (e) => {
+    if (e.target === fallbackModal) {
+      fallbackModal.remove()
+      delete window.selectAllText
+    }
+  })
+  
+  // Close modal with Escape key
+  const escapeHandler = (e) => {
+    if (e.key === 'Escape') {
+      fallbackModal.remove()
+      delete window.selectAllText
+      document.removeEventListener('keydown', escapeHandler)
+    }
+  }
+  document.addEventListener('keydown', escapeHandler)
 }
