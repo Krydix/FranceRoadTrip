@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Berlin to Normandy Road Trip Planner</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="header">
+        <h1>🚗 Berlin to Normandy Road Trip</h1>
+        <p>7-Day Camping Adventure • July 18-25, 2025</p>
+      </header>
+      
+      <div class="container">
+        <div class="sidebar">
+          <h2>Day-by-Day Itinerary</h2>
+          <div id="itinerary"></div>
+        </div>
+        
+        <div class="map-container">
+          <div id="map"></div>
+          
+          <!-- Image Slideshow -->
+          <div id="image-slideshow" class="image-slideshow">
+            <div class="slideshow-container">
+              <div class="loading-indicator">
+                <div class="spinner"></div>
+                Loading images...
+              </div>
+              <div id="slides-container"></div>
+              <button class="nav-arrow prev" onclick="changeSlide(-1)">‹</button>
+              <button class="nav-arrow next" onclick="changeSlide(1)">›</button>
+              <button class="close-slideshow" onclick="closeSlideshow()">×</button>
+              <div class="slideshow-dots" id="slideshow-dots"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>l>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vite App</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
