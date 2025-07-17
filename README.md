@@ -52,11 +52,31 @@ A comprehensive web application for planning a 7-day camping road trip from Berl
 
 ### Deployment
 
-This project is configured for automatic deployment to GitHub Pages:
+This project uses the traditional GitHub Pages deployment method:
 
-1. **Push to main branch** - GitHub Actions will automatically build and deploy
-2. **Enable Pages** in repository settings (source: GitHub Actions)
-3. **Access your site** at `https://yourusername.github.io/repositoryname/`
+1. **Build and Deploy** (automated):
+   ```bash
+   ./build.sh
+   ```
+
+2. **Manual process**:
+   ```bash
+   npm run build
+   git checkout gh-pages
+   cp -r dist/* .
+   rm -rf dist
+   git add .
+   git commit -m "Deploy"
+   git push origin gh-pages
+   git checkout main
+   ```
+
+3. **GitHub Pages Setup**:
+   - Go to your repository settings
+   - Navigate to "Pages" section
+   - Select "Deploy from a branch"
+   - Choose `gh-pages` branch and `/ (root)` folder
+   - Your site will be available at: `https://yourusername.github.io/repositoryname/`
 
 ## 🌐 External APIs (All Free)
 
