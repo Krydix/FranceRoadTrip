@@ -295,9 +295,22 @@ body {
 
 /* Responsive design */
 @media (max-width: 768px) {
+    .header {
+        padding: 1rem;
+    }
+    
+    .header h1 {
+        font-size: 1.5rem;
+    }
+    
+    .header p {
+        font-size: 0.8rem;
+    }
+    
     .container {
         grid-template-columns: 1fr;
-        grid-template-rows: 300px 1fr;
+        grid-template-rows: auto 1fr;
+        height: calc(100vh - 80px);
     }
     
     .sidebar {
@@ -306,20 +319,179 @@ body {
         overflow-x: auto;
         overflow-y: hidden;
         display: flex;
-        gap: 1rem;
+        gap: 0.75rem;
         padding: 1rem;
+        max-height: 200px;
+        position: relative;
+    }
+    
+    .sidebar h2 {
+        position: absolute;
+        left: 1rem;
+        top: 0.5rem;
+        font-size: 1rem;
+        margin-bottom: 0;
+        z-index: 10;
+        background: white;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
     .day-card {
         min-width: 200px;
         margin-bottom: 0;
+        flex-shrink: 0;
+        margin-top: 2rem;
+    }
+    
+    .day-header {
+        padding: 0.5rem 0.75rem;
+    }
+    
+    .day-header h3 {
+        font-size: 0.8rem;
+    }
+    
+    .day-details {
+        padding: 0.5rem 0.75rem;
+    }
+    
+    .day-details p {
+        font-size: 0.7rem;
+    }
+    
+    .map-container {
+        position: relative;
+        min-height: calc(100vh - 280px);
+    }
+    
+    #map {
+        height: 100%;
+        width: 100%;
+        min-height: 400px;
     }
     
     .image-slideshow {
-        width: 250px;
-        height: 170px;
+        width: calc(100vw - 20px);
+        height: 60vh;
         bottom: 10px;
         right: 10px;
+        left: 10px;
+        top: auto;
+        max-width: none;
+    }
+    
+    .slideshow-container {
+        height: 100%;
+    }
+    
+    .slide img {
+        width: 100%;
+        height: calc(60vh - 80px);
+        object-fit: cover;
+    }
+    
+    .slide-caption {
+        padding: 0.75rem;
+        font-size: 0.9rem;
+    }
+    
+    .nav-arrow {
+        font-size: 1.5rem;
+        width: 40px;
+        height: 40px;
+    }
+    
+    .close-slideshow {
+        font-size: 1.5rem;
+        width: 35px;
+        height: 35px;
+    }
+    
+    .slideshow-dots {
+        padding: 0.75rem;
+    }
+    
+    .dot {
+        width: 10px;
+        height: 10px;
+        margin: 0 4px;
+    }
+}
+
+/* Extra small mobile devices */
+@media (max-width: 480px) {
+    .header {
+        padding: 0.75rem;
+    }
+    
+    .header h1 {
+        font-size: 1.3rem;
+    }
+    
+    .sidebar {
+        padding: 0.75rem;
+        gap: 0.5rem;
+    }
+    
+    .sidebar h2 {
+        font-size: 0.9rem;
+        left: 0.75rem;
+        top: 0.25rem;
+    }
+    
+    .day-card {
+        min-width: 180px;
+    }
+    
+    .day-header h3 {
+        font-size: 0.75rem;
+    }
+    
+    .day-header .date {
+        font-size: 0.7rem;
+    }
+    
+    .day-details h4 {
+        font-size: 0.75rem;
+    }
+    
+    .day-details p {
+        font-size: 0.65rem;
+    }
+    
+    .day-details .distance {
+        font-size: 0.6rem;
+    }
+    
+    .image-slideshow {
+        width: calc(100vw - 10px);
+        height: 65vh;
+        bottom: 5px;
+        right: 5px;
+        left: 5px;
+    }
+    
+    .slide img {
+        height: calc(65vh - 70px);
+    }
+    
+    .slide-caption {
+        padding: 0.5rem;
+        font-size: 0.8rem;
+    }
+    
+    .nav-arrow {
+        font-size: 1.2rem;
+        width: 35px;
+        height: 35px;
+    }
+    
+    .close-slideshow {
+        font-size: 1.2rem;
+        width: 30px;
+        height: 30px;
     }
 }
 

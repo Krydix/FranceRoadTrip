@@ -101,6 +101,15 @@ document.addEventListener('DOMContentLoaded', function() {
   renderItinerary()
   addMapMarkers()
   drawRoute()
+  
+  // Add mobile enhancements
+  addTouchGestures()
+  enhanceMapForMobile()
+  
+  // Handle window resize for mobile/desktop switching
+  window.addEventListener('resize', () => {
+    enhanceMapForMobile()
+  })
 })
 
 // Initialize Leaflet map
@@ -589,3 +598,73 @@ async function fetchBasicWikimediaImages(location, country) {
   
   return []
 }
+
+// Mobile touch gesture support for slideshow
+function addTouchGestures() {
+  const slideshow = document.getElementById('image-slideshow')
+  let startX = 0
+  let startY = 0
+  let isDragging = false
+  
+  slideshow.addEventListener('touchstart', (e) => {
+    startX = e.touches[0].clientX
+    startY = e.touches[0].clientY
+    isDragging = true
+  }, { passive: true })
+  
+  slideshow.addEventListener('touchmove', (e) => {
+    if (!isDragging) return
+    
+    const currentX = e.touches[0].clientX
+    const currentY = e.touches[0].clientY
+    const diffX = startX - currentX
+    const diffY = startY - currentY
+    
+    // Prevent vertical scrolling while swiping horizontally
+    if (Math.abs(diffX) > Math.abs(diffY)) {
+      e.preventDefault()
+    }
+  }, { passive: false })
+  
+  slideshow.addEventListener('touchend', (e) => {
+    if (!isDragging) return
+    
+    const endX = e.changedTouches[0].clientX
+    const endY = e.changedTouches[0].clientY
+    const diffX = startX - endX
+    const diffY = startY - endY
+    
+    // Check if it's a horizontal swipe
+    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
+      if (diffX > 0) {
+        changeSlide(1) // Swipe left = next
+      } else {
+        changeSlide(-1) // Swipe right = previous
+      }
+    }
+    
+    isDragging = false
+  }, { passive: true })
+}
+
+// Improve map interaction on mobile
+function enhanceMapForMobile() {
+  // Add better mobile controls
+  if (window.innerWidth <= 768) {
+    map.options.scrollWheelZoom = false
+    map.options.doubleClickZoom = true
+    map.options.touchZoom = true
+    map.options.dragging = true
+    
+    // Add zoom control for mobile
+    L.control.zoom({
+      position: 'bottomright'
+    }).addTo(map)
+  }
+}
+
+// Call touch gestures and map enhancements on load
+document.addEventListener('DOMContentLoaded', () => {
+  addTouchGestures()
+  enhanceMapForMobile()
+})
