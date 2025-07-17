@@ -109,16 +109,56 @@ document.addEventListener('DOMContentLoaded', function() {
   // Handle window resize for mobile/desktop switching
   window.addEventListener('resize', () => {
     enhanceMapForMobile()
+    handleZoomControlsOnResize()
   })
 })
 
 // Initialize Leaflet map
 function initializeMap() {
-  map = L.map('map').setView([50.5, 3.0], 6)
+  // Disable default zoom controls on mobile
+  const isMobile = window.innerWidth <= 768
+  
+  map = L.map('map', {
+    zoomControl: !isMobile // Disable default zoom controls on mobile
+  }).setView([50.5, 3.0], 6)
   
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors'
   }).addTo(map)
+  
+  // Add custom zoom controls for mobile
+  if (isMobile) {
+    addMobileZoomControls()
+  }
+}
+
+// Add custom zoom controls for mobile
+function addMobileZoomControls() {
+  const mapContainer = document.getElementById('map')
+  
+  // Create zoom controls container
+  const zoomControls = document.createElement('div')
+  zoomControls.className = 'mobile-zoom-controls'
+  
+  // Zoom in button
+  const zoomInBtn = document.createElement('button')
+  zoomInBtn.className = 'mobile-zoom-btn'
+  zoomInBtn.innerHTML = '+'
+  zoomInBtn.addEventListener('click', () => {
+    map.zoomIn()
+  })
+  
+  // Zoom out button
+  const zoomOutBtn = document.createElement('button')
+  zoomOutBtn.className = 'mobile-zoom-btn'
+  zoomOutBtn.innerHTML = '−'
+  zoomOutBtn.addEventListener('click', () => {
+    map.zoomOut()
+  })
+  
+  zoomControls.appendChild(zoomInBtn)
+  zoomControls.appendChild(zoomOutBtn)
+  mapContainer.appendChild(zoomControls)
 }
 
 // Render itinerary in sidebar
@@ -663,8 +703,26 @@ function enhanceMapForMobile() {
   }
 }
 
-// Call touch gestures and map enhancements on load
-document.addEventListener('DOMContentLoaded', () => {
-  addTouchGestures()
-  enhanceMapForMobile()
-})
+// Handle zoom controls when window is resized
+function handleZoomControlsOnResize() {
+  const isMobile = window.innerWidth <= 768
+  const existingControls = document.querySelector('.mobile-zoom-controls')
+  
+  if (isMobile && !existingControls) {
+    // Add mobile controls if we're on mobile and don't have them
+    addMobileZoomControls()
+    // Hide default leaflet zoom controls
+    const leafletZoom = document.querySelector('.leaflet-control-zoom')
+    if (leafletZoom) {
+      leafletZoom.style.display = 'none'
+    }
+  } else if (!isMobile && existingControls) {
+    // Remove mobile controls if we're on desktop
+    existingControls.remove()
+    // Show default leaflet zoom controls
+    const leafletZoom = document.querySelector('.leaflet-control-zoom')
+    if (leafletZoom) {
+      leafletZoom.style.display = 'block'
+    }
+  }
+}

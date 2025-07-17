@@ -316,33 +316,32 @@ body {
     .sidebar {
         border-right: none;
         border-bottom: 1px solid #e0e0e0;
-        overflow-x: auto;
-        overflow-y: hidden;
-        display: flex;
-        gap: 0.75rem;
+        overflow-x: hidden;
+        overflow-y: auto;
+        display: block;
         padding: 1rem;
-        max-height: 200px;
+        max-height: 250px;
         position: relative;
+        background: #f8f9fa;
     }
     
     .sidebar h2 {
-        position: absolute;
-        left: 1rem;
-        top: 0.5rem;
+        position: sticky;
+        top: 0;
+        left: 0;
         font-size: 1rem;
-        margin-bottom: 0;
+        margin-bottom: 1rem;
         z-index: 10;
-        background: white;
-        padding: 0.25rem 0.5rem;
-        border-radius: 4px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        background: #f8f9fa;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #e0e0e0;
     }
     
     .day-card {
-        min-width: 200px;
-        margin-bottom: 0;
+        min-width: auto;
+        margin-bottom: 0.75rem;
         flex-shrink: 0;
-        margin-top: 2rem;
+        margin-top: 0;
     }
     
     .day-header {
@@ -363,13 +362,48 @@ body {
     
     .map-container {
         position: relative;
-        min-height: calc(100vh - 280px);
+        min-height: calc(100vh - 330px);
     }
     
     #map {
         height: 100%;
         width: 100%;
         min-height: 400px;
+    }
+    
+    /* Hide default Leaflet zoom controls on mobile */
+    .leaflet-control-zoom {
+        display: none !important;
+    }
+    
+    /* Custom zoom controls for mobile */
+    .mobile-zoom-controls {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+    
+    .mobile-zoom-btn {
+        width: 40px;
+        height: 40px;
+        background: white;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 18px;
+        font-weight: bold;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    
+    .mobile-zoom-btn:hover {
+        background: #f0f0f0;
     }
     
     .image-slideshow {
