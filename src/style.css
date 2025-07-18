@@ -882,757 +882,110 @@ body {
     transform: translateY(1px);
 }
 
-/* Day cards */
-.day-card {
-    background: #ffffff;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    margin-bottom: 0.75rem;
-    overflow: hidden;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.day-card:hover {
-    border-color: #007bff;
-    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.1);
-}
-
-.day-card.active {
-    border-color: #007bff;
-    background: #f8f9ff;
-}
-
-/* Keyboard navigation styles */
-.sidebar.keyboard-focused {
-    outline: 2px solid #007bff;
-    outline-offset: -2px;
-}
-
-.day-card.keyboard-selected {
-    border-color: #28a745;
-    background: #f8fff8;
-    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.2);
-}
-
-.day-card.keyboard-selected .day-header {
-    background: #e8f5e8;
-}
-
-.day-header {
-    padding: 0.75rem 1rem;
-    background: #f8f9fa;
-    border-bottom: 1px solid #e0e0e0;
-}
-
-.day-header h3 {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 0.25rem;
-}
-
-.day-header .date {
-    font-size: 0.75rem;
-    color: #666;
-}
-
-.day-details {
-    padding: 0.75rem 1rem;
-}
-
-.day-details h4 {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 0.5rem;
-}
-
-.day-details p {
-    font-size: 0.75rem;
-    color: #666;
-    margin-bottom: 0.5rem;
-    line-height: 1.4;
-}
-
-.day-details .distance {
-    font-size: 0.7rem;
-    color: #007bff;
-    font-weight: 500;
-}
-
-/* Map container */
-.map-container {
-    position: relative;
-    background: #ffffff;
-}
-
-#map {
-    height: 100%;
-    width: 100%;
-    border-radius: 0;
-}
-
-/* Image slideshow */
-.image-slideshow {
-    position: absolute;
-    bottom: 20px;
-    right: 20px;
-    width: 300px;
-    height: 200px;
-    background: #ffffff;
-    border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-    overflow: hidden;
-    z-index: 1000;
-    display: none;
-}
-
-.slideshow-container {
-    position: relative;
-    width: 100%;
-    height: 100%;
-}
-
-.slide {
-    display: none;
-    width: 100%;
-    height: 100%;
-    position: relative;
-}
-
-.slide.active {
-    display: block;
-}
-
-.slide img {
-    width: 100%;
-    height: 70%;
-    object-fit: cover;
-}
-
-.slide-caption {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: rgba(0, 0, 0, 0.8);
-    color: white;
-    padding: 0.5rem;
-    font-size: 0.7rem;
-    text-align: center;
-    height: 30%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-/* Navigation arrows */
-.nav-arrow {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    background: rgba(0, 0, 0, 0.5);
-    color: white;
-    border: none;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    cursor: pointer;
-    font-size: 0.8rem;
-    z-index: 1001;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-}
-
-.nav-arrow:hover {
-    background: rgba(0, 0, 0, 0.8);
-}
-
-.nav-arrow.prev {
-    left: 10px;
-}
-
-.nav-arrow.next {
-    right: 10px;
-}
-
-/* Close button */
-.close-slideshow {
+/* Campsite Controls */
+.campsite-controls {
     position: absolute;
     top: 10px;
-    right: 10px;
-    background: rgba(0, 0, 0, 0.5);
-    color: white;
-    border: none;
-    width: 25px;
-    height: 25px;
-    border-radius: 50%;
-    cursor: pointer;
-    font-size: 0.8rem;
-    z-index: 1001;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.close-slideshow:hover {
-    background: rgba(0, 0, 0, 0.8);
-}
-
-/* Dots indicator */
-.slideshow-dots {
-    position: absolute;
-    bottom: 35px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 5px;
-    z-index: 1001;
-}
-
-.dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.5);
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.dot.active {
-    background: white;
-}
-
-/* Loading indicator */
-.loading-indicator {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: #666;
-    font-size: 0.8rem;
-}
-
-.spinner {
-    border: 2px solid #f3f3f3;
-    border-top: 2px solid #007bff;
-    border-radius: 50%;
-    width: 20px;
-    height: 20px;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 0.5rem;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-/* Load Trip Button */
-.load-trip-btn {
-    background: #007bff;
-    color: white;
-    border: none;
-    padding: 0.5rem 1rem;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    cursor: pointer;
-    margin-top: 0.5rem;
-    transition: background-color 0.2s ease;
-}
-
-.load-trip-btn:hover {
-    background: #0056b3;
-}
-
-/* Modal styles */
-.modal {
-    display: none;
-    position: fixed;
+    left: 10px;
     z-index: 1000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
-}
-
-.modal-content {
-    background-color: #fff;
-    margin: 5% auto;
-    padding: 0;
+    background: rgba(255, 255, 255, 0.95);
     border-radius: 8px;
-    width: 90%;
-    max-width: 600px;
-    max-height: 80vh;
-    overflow: hidden;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-}
-
-.modal-header {
-    background: #f8f9fa;
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid #e0e0e0;
+    padding: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 8px;
+    backdrop-filter: blur(5px);
 }
 
-.modal-header h2 {
-    font-size: 1.2rem;
+.campsite-label {
+    font-size: 0.85rem;
     font-weight: 600;
     color: #333;
-    margin: 0;
+    margin-right: 4px;
 }
 
-.close-modal {
-    background: none;
-    border: none;
-    font-size: 1.5rem;
-    cursor: pointer;
-    color: #666;
-    padding: 0;
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.close-modal:hover {
-    color: #333;
-}
-
-.modal-body {
-    padding: 1.5rem;
-}
-
-.modal-body p {
-    margin-bottom: 1rem;
-    color: #666;
-    font-size: 0.9rem;
-}
-
-#trip-markdown {
-    width: 100%;
-    height: 300px;
-    padding: 1rem;
+.campsite-toggle {
+    background: #f8f9fa;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
-    font-family: Monaco, 'Courier New', monospace;
-    font-size: 0.85rem;
-    line-height: 1.4;
-    resize: vertical;
-    margin-bottom: 1rem;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
 }
 
-#trip-markdown:focus {
-    outline: none;
+.campsite-toggle:hover {
+    background: #e9ecef;
     border-color: #007bff;
-    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
 }
 
-.modal-actions {
-    display: flex;
-    gap: 0.75rem;
-    justify-content: flex-end;
-}
-
-.primary-btn {
+.campsite-toggle.active {
     background: #007bff;
     color: white;
-    border: none;
-    padding: 0.6rem 1.2rem;
-    border-radius: 6px;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
+    border-color: #007bff;
 }
 
-.primary-btn:hover {
+.campsite-toggle.active:hover {
     background: #0056b3;
 }
 
-.secondary-btn {
-    background: #6c757d;
-    color: white;
-    border: none;
-    padding: 0.6rem 1.2rem;
-    border-radius: 6px;
-    font-size: 0.9rem;
+/* Campsite Markers */
+.campsite-marker {
     cursor: pointer;
-    transition: background-color 0.2s ease;
+    transition: transform 0.2s ease;
 }
 
-.secondary-btn:hover {
-    background: #545b62;
+.campsite-marker:hover {
+    transform: scale(1.2);
 }
 
-.error-message {
-    color: #dc3545;
+/* Campsite Popup */
+.campsite-popup {
+    min-width: 200px;
+}
+
+.campsite-popup h4 {
+    margin: 0 0 8px 0;
+    color: #333;
+    font-size: 1rem;
+}
+
+.campsite-popup p {
+    margin: 4px 0;
     font-size: 0.85rem;
-    margin-top: 1rem;
-    padding: 0.75rem;
-    background: #f8d7da;
-    border: 1px solid #f5c6cb;
-    border-radius: 4px;
-    display: none;
-}
-
-.error-message.show {
-    display: block;
-}
-
-/* Enhanced button feedback */
-.secondary-btn.copied {
-    background: #28a745;
-    color: white;
-}
-
-.secondary-btn.copied:hover {
-    background: #218838;
-}
-
-.primary-btn:disabled,
-.secondary-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-/* Keyboard navigation hint */
-.keyboard-hint {
-    font-size: 0.75rem;
     color: #666;
-    margin-bottom: 1rem;
-    padding: 0.5rem;
-    background: #f8f9fa;
-    border-radius: 4px;
-    text-align: center;
-    border: 1px solid #e0e0e0;
 }
 
-/* Hide keyboard hint on mobile */
+.campsite-popup a {
+    color: #007bff;
+    text-decoration: none;
+}
+
+.campsite-popup a:hover {
+    text-decoration: underline;
+}
+
+/* Mobile adjustments for campsite controls */
 @media (max-width: 768px) {
-    .keyboard-hint {
-        display: none;
-    }
-}
-
-/* Responsive design */
-/* Hide mobile load trip button on desktop */
-.mobile-load-trip-btn {
-    display: none;
-}
-
-@media (max-width: 768px) {
-    .header {
-        display: none; /* Hide main header on mobile to save space */
-    }
-    
-    .container {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto 1fr;
-        height: 100vh; /* Use full viewport height since header is hidden */
-    }
-    
-    .sidebar {
-        border-right: none;
-        border-bottom: 1px solid #e0e0e0;
-        overflow-x: hidden;
-        overflow-y: auto;
-        display: block;
-        padding: 0;
-        max-height: 280px; /* Increased height for better usability */
-        position: relative;
-        background: #f8f9fa;
-    }
-    
-    .sidebar h2 {
-        position: sticky;
-        top: 0;
-        left: 0;
-        font-size: 1.1rem;
-        margin-bottom: 0;
-        z-index: 10;
-        background: #007bff;
-        color: white;
-        padding: 1rem;
-        border-bottom: 1px solid #0056b3;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        text-align: center;
-        font-weight: 600;
-    }
-    
-    /* Add subtitle to mobile header */
-    .sidebar h2::after {
-        content: "🚗 Berlin to Normandy • July 18-25, 2025";
-        display: block;
-        font-size: 0.8rem;
-        font-weight: 400;
-        margin-top: 0.25rem;
-        opacity: 0.9;
-    }
-    
-    /* Mobile load trip button */
-    .mobile-load-trip-btn {
-        display: block;
-        width: calc(100% - 2rem);
-        margin: 0 1rem 1rem 1rem;
-        padding: 0.75rem 1rem;
-        background: #28a745;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        font-size: 0.9rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        text-align: center;
-    }
-    
-    .mobile-load-trip-btn:hover {
-        background: #218838;
-        transform: translateY(-1px);
-    }
-    
-    .mobile-load-trip-btn:active {
-        transform: translateY(0);
-    }
-    
-    /* Add padding to the itinerary container */
-    #itinerary {
-        padding: 1rem;
-    }
-    
-    .day-card {
-        min-width: auto;
-        margin-bottom: 0.75rem;
-        flex-shrink: 0;
-        margin-top: 0;
-    }
-    
-    .day-header {
-        padding: 0.5rem 0.75rem;
-    }
-    
-    .day-header h3 {
-        font-size: 0.8rem;
-    }
-    
-    .day-details {
-        padding: 0.5rem 0.75rem;
-    }
-    
-    .day-details p {
-        font-size: 0.7rem;
-    }
-    
-    .map-container {
-        position: relative;
-        min-height: calc(100vh - 280px); /* Adjusted for new header arrangement */
-    }
-    
-    #map {
-        height: 100%;
-        width: 100%;
-        min-height: calc(100vh - 280px); /* Give the map more space */
-    }
-    
-    /* Hide default Leaflet zoom controls on mobile */
-    .leaflet-control-zoom {
-        display: none !important;
-    }
-    
-    /* Custom zoom controls for mobile */
-    .mobile-zoom-controls {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        z-index: 1000;
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-    }
-    
-    .mobile-zoom-btn {
-        width: 40px;
-        height: 40px;
-        background: white;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        font-size: 18px;
-        font-weight: bold;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
+    .campsite-controls {
+        top: 60px;
+        left: 50%;
+        transform: translateX(-50%);
+        flex-direction: row;
         justify-content: center;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        width: auto;
+        max-width: calc(100vw - 20px);
     }
     
-    .mobile-zoom-btn:hover {
-        background: #f0f0f0;
-    }
-    
-    .image-slideshow {
-        width: calc(100vw - 20px);
-        height: 60vh;
-        bottom: 10px;
-        right: 10px;
-        left: 10px;
-        top: auto;
-        max-width: none;
-    }
-    
-    .slideshow-container {
-        height: 100%;
-    }
-    
-    .slide img {
-        width: 100%;
-        height: calc(60vh - 80px);
-        object-fit: cover;
-    }
-    
-    .slide-caption {
-        padding: 0.75rem;
-        font-size: 0.9rem;
-    }
-    
-    .nav-arrow {
-        font-size: 1.5rem;
-        width: 40px;
-        height: 40px;
-    }
-    
-    .close-slideshow {
-        font-size: 1.5rem;
-        width: 35px;
-        height: 35px;
-    }
-    
-    .slideshow-dots {
-        padding: 0.75rem;
-    }
-    
-    .dot {
-        width: 10px;
-        height: 10px;
-        margin: 0 4px;
-    }
-    
-    /* Mobile responsive styles for modal */
-    .modal-content {
-        width: 95%;
-        margin: 10% auto;
-        max-height: 85vh;
-    }
-    
-    .modal-body {
-        padding: 1rem;
-    }
-    
-    #trip-markdown {
-        height: 250px;
-        font-size: 0.8rem;
-    }
-    
-    .modal-actions {
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-    
-    .primary-btn, .secondary-btn {
-        width: 100%;
-        padding: 0.75rem;
-    }
-    
-    .load-trip-btn {
-        font-size: 0.75rem;
-        padding: 0.4rem 0.8rem;
-    }
-}
-
-/* Extra small mobile devices */
-@media (max-width: 480px) {
-    .sidebar {
-        padding: 0;
-        max-height: 300px; /* Slightly more height for smaller screens */
-    }
-    
-    .sidebar h2 {
-        font-size: 1rem;
-        padding: 0.75rem;
-    }
-    
-    .sidebar h2::after {
+    .campsite-toggle {
+        padding: 8px 12px;
         font-size: 0.75rem;
     }
     
-    #itinerary {
-        padding: 0.75rem;
-    }
-    
-    .day-card {
-        min-width: auto;
-    }
-    
-    .day-header h3 {
-        font-size: 0.75rem;
-    }
-    
-    .day-header .date {
-        font-size: 0.7rem;
-    }
-    
-    .day-details h4 {
-        font-size: 0.75rem;
-    }
-    
-    .day-details p {
-        font-size: 0.65rem;
-    }
-    
-    .day-details .distance {
-        font-size: 0.6rem;
-    }
-    
-    .map-container {
-        min-height: calc(100vh - 300px);
-    }
-    
-    #map {
-        min-height: calc(100vh - 300px);
-    }
-    
-    .image-slideshow {
-        width: calc(100vw - 10px);
-        height: 65vh;
-        bottom: 5px;
-        right: 5px;
-        left: 5px;
-    }
-    
-    .slide img {
-        height: calc(65vh - 70px);
-    }
-    
-    .slide-caption {
-        padding: 0.5rem;
-        font-size: 0.8rem;
-    }
-    
-    .nav-arrow {
-        font-size: 1.2rem;
-        width: 35px;
-        height: 35px;
-    }
-    
-    .close-slideshow {
-        font-size: 1.2rem;
-        width: 30px;
-        height: 30px;
+    .campsite-label {
+        display: none; /* Hide label on mobile to save space */
     }
 }

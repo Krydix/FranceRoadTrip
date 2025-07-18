@@ -13,12 +13,24 @@ let preloadQueue = [] // Queue for background preloading
 let currentSelectedDay = 0 // Track currently selected day for keyboard navigation
 let sidebarFocused = false // Track if sidebar has focus for keyboard navigation
 
+// Campsite-related variables
+let campsiteMarkers = []
+let campsiteLayer = null
+let runningCampsiteRequest = null
+let campsiteDisplayMode = 'nearest' // 'all', 'nearest', 'none'
+
+// Campsite constants
+const CAMPSITE_API_URL = "https://opencampingmap.org/getcampsites"
+const MIN_ZOOM_FOR_CAMPSITES = 8
+const NEAREST_CAMPSITES_COUNT = 5
+
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
   initializeMap()
   loadAndRenderTrip()
   setupModalHandlers()
   setupKeyboardNavigation()
+  setupCampsiteControls()
   
   // Add mobile enhancements
   addTouchGestures()
@@ -592,6 +604,13 @@ function initializeMap() {
   if (isMobile) {
     addMobileZoomControls()
   }
+  
+  // Setup campsite layer
+  initializeCampsiteLayer()
+  
+  // Add map event listeners for campsite updates
+  map.on('moveend', updateCampsites)
+  map.on('zoomend', updateCampsites)
 }
 
 // Add custom zoom controls for mobile
@@ -621,6 +640,261 @@ function addMobileZoomControls() {
   zoomControls.appendChild(zoomInBtn)
   zoomControls.appendChild(zoomOutBtn)
   mapContainer.appendChild(zoomControls)
+}
+
+// Initialize campsite layer
+function initializeCampsiteLayer() {
+  // Create a layer group for campsite markers
+  campsiteLayer = L.layerGroup().addTo(map)
+}
+
+// Setup campsite controls
+function setupCampsiteControls() {
+  // Initialize controls only once
+  if (document.getElementById('campsite-controls').children.length > 1) {
+    return
+  }
+  
+  const campsiteControlContainer = document.getElementById('campsite-controls')
+  
+  // Create and add controls
+  const modes = [
+    { id: 'nearest', label: '🏕️ Nearest 5', title: 'Show nearest 5 campsites to your route' },
+    { id: 'all', label: '🗺️ All', title: 'Show all campsites in current view' },
+    { id: 'none', label: '❌ None', title: 'Hide all campsites' }
+  ]
+  
+  modes.forEach(mode => {
+    const button = document.createElement('button')
+    button.textContent = mode.label
+    button.title = mode.title
+    button.className = `campsite-toggle ${mode.id === campsiteDisplayMode ? 'active' : ''}`
+    button.dataset.mode = mode.id
+    
+    button.addEventListener('click', () => {
+      setCampsiteDisplayMode(mode.id)
+      
+      // Update active button
+      document.querySelectorAll('.campsite-toggle').forEach(btn => btn.classList.remove('active'))
+      button.classList.add('active')
+    })
+    
+    campsiteControlContainer.appendChild(button)
+  })
+}
+
+// Set campsite display mode
+function setCampsiteDisplayMode(mode) {
+  campsiteDisplayMode = mode
+  updateCampsites()
+}
+
+// Update campsites based on current map view and display mode
+async function updateCampsites() {
+  if (campsiteDisplayMode === 'none') {
+    clearCampsites()
+    return
+  }
+  
+  const zoom = map.getZoom()
+  if (zoom < MIN_ZOOM_FOR_CAMPSITES) {
+    clearCampsites()
+    return
+  }
+  
+  try {
+    const campsites = await fetchCampsites()
+    displayCampsites(campsites)
+  } catch (error) {
+    console.error('Error updating campsites:', error)
+  }
+}
+
+// Fetch campsites from OpenCampingMap API
+async function fetchCampsites() {
+  // Cancel any running request
+  if (runningCampsiteRequest) {
+    runningCampsiteRequest.abort()
+  }
+  
+  const bounds = map.getBounds()
+  const bbox = bounds.toBBoxString()
+  
+  const controller = new AbortController()
+  runningCampsiteRequest = controller
+  
+  const formData = new FormData()
+  formData.append('bbox', bbox)
+  
+  try {
+    const response = await fetch(CAMPSITE_API_URL, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    runningCampsiteRequest = null
+    
+    return data.features || []
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      // Request was cancelled, this is fine
+      return []
+    }
+    throw error
+  }
+}
+
+// Calculate distance between two points in kilometers
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371 // Radius of the Earth in km
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+  return R * c
+}
+
+// Find nearest campsites to trip pins
+function findNearestCampsites(campsites, count = NEAREST_CAMPSITES_COUNT) {
+  if (!currentTripData || !currentTripData.days) {
+    return campsites
+  }
+  
+  const tripCoordinates = currentTripData.days
+    .filter(day => day.coordinates && day.coordinates.length === 2)
+    .map(day => day.coordinates)
+  
+  if (tripCoordinates.length === 0) {
+    return campsites
+  }
+  
+  // Calculate minimum distance from each campsite to any trip pin
+  const campsitesWithDistance = campsites.map(campsite => {
+    const [campsiteLon, campsiteLat] = campsite.geometry.coordinates
+    
+    const minDistance = Math.min(...tripCoordinates.map(([tripLat, tripLon]) => 
+      calculateDistance(campsiteLat, campsiteLon, tripLat, tripLon)
+    ))
+    
+    return {
+      ...campsite,
+      minDistanceToTrip: minDistance
+    }
+  })
+  
+  // Sort by distance and return the nearest ones
+  return campsitesWithDistance
+    .sort((a, b) => a.minDistanceToTrip - b.minDistanceToTrip)
+    .slice(0, count)
+}
+
+// Display campsites on the map
+function displayCampsites(campsites) {
+  clearCampsites()
+  
+  let campsitesToShow = campsites
+  
+  if (campsiteDisplayMode === 'nearest') {
+    campsitesToShow = findNearestCampsites(campsites)
+  }
+  
+  campsitesToShow.forEach(campsite => {
+    const marker = createCampsiteMarker(campsite)
+    if (marker) {
+      campsiteMarkers.push(marker)
+      campsiteLayer.addLayer(marker)
+    }
+  })
+}
+
+// Create a campsite marker
+function createCampsiteMarker(campsite) {
+  const [lon, lat] = campsite.geometry.coordinates
+  const props = campsite.properties
+  
+  // Determine campsite category and icon
+  const category = props.category || 'standard'
+  const isPrivate = props.access && ['private', 'members', 'no'].includes(props.access)
+  
+  // Create custom icon (simplified version of OpenCampingMap icons)
+  const iconColor = getCampsiteIconColor(category, isPrivate)
+  const icon = L.divIcon({
+    className: 'campsite-marker',
+    html: `<div style="background-color: ${iconColor}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8]
+  })
+  
+  const marker = L.marker([lat, lon], { icon })
+  
+  // Create popup content
+  const popupContent = createCampsitePopup(campsite)
+  marker.bindPopup(popupContent)
+  
+  return marker
+}
+
+// Get campsite icon color based on category and access
+function getCampsiteIconColor(category, isPrivate) {
+  const colors = {
+    backcountry: '#225500',
+    group_only: '#552200',
+    nudist: '#68228b',
+    standard: '#000080',
+    camping: '#000080',
+    caravan: '#000080'
+  }
+  
+  if (isPrivate) {
+    return '#666666'
+  }
+  
+  return colors[category] || colors.standard
+}
+
+// Create campsite popup content
+function createCampsitePopup(campsite) {
+  const props = campsite.properties
+  const name = props.name || 'Unnamed Campsite'
+  const category = props.category || 'standard'
+  const access = props.access || 'public'
+  
+  let content = `<div class="campsite-popup">
+    <h4>${name}</h4>
+    <p><strong>Category:</strong> ${category}</p>`
+  
+  if (access !== 'public') {
+    content += `<p><strong>Access:</strong> ${access}</p>`
+  }
+  
+  if (props.operator) {
+    content += `<p><strong>Operator:</strong> ${props.operator}</p>`
+  }
+  
+  if (props.website) {
+    content += `<p><a href="${props.website}" target="_blank">Website</a></p>`
+  }
+  
+  content += '</div>'
+  
+  return content
+}
+
+// Clear all campsite markers
+function clearCampsites() {
+  campsiteMarkers.forEach(marker => {
+    campsiteLayer.removeLayer(marker)
+  })
+  campsiteMarkers = []
 }
 
 // Render itinerary in sidebar
