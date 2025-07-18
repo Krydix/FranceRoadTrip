@@ -697,10 +697,14 @@ function selectDay(index, shouldZoomMap = false) {
     behavior: 'smooth'
   })
   
-  // Only zoom map if explicitly requested (Enter key press)
+  // Center map on selected location (with or without zoom)
   const day = currentTripData.days[index]
   if (shouldZoomMap) {
+    // Zoom to location (View Location button or Enter key)
     map.setView(day.coordinates, 10)
+  } else {
+    // Just center without changing zoom (pin click or day click)
+    map.panTo(day.coordinates)
   }
   
   // Highlight marker
@@ -709,6 +713,11 @@ function selectDay(index, shouldZoomMap = false) {
       marker.openPopup()
     }
   })
+  
+  // Update images on desktop
+  if (window.innerWidth > 768) {
+    showLocationImages(day)
+  }
 }
 
 // Add markers to map
@@ -1651,15 +1660,10 @@ function navigateToDay(dayIndex) {
   dayIndex = Math.max(0, Math.min(dayIndex, currentTripData.days.length - 1))
   
   currentSelectedDay = dayIndex
-  selectDay(dayIndex)
+  selectDay(dayIndex) // This will handle image updates
   
   // Update visual focus indicator
   updateKeyboardFocus()
-  
-  // Show images for the new day on desktop
-  if (window.innerWidth > 768) {
-    showLocationImages(currentTripData.days[dayIndex])
-  }
 }
 
 // Update visual focus indicator for keyboard navigation
