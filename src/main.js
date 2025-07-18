@@ -641,16 +641,21 @@ function renderItinerary(tripDays) {
         <h4>🏕️ ${day.camping}</h4>
         <p>${day.description}</p>
         <div class="distance">${day.distance}</div>
+        <button class="view-location-btn" onclick="viewLocation(${index})">📍 View Location</button>
       </div>
     `
     
-    dayCard.addEventListener('click', () => {
+    dayCard.addEventListener('click', (e) => {
+      // Don't trigger day selection if clicking on the view location button
+      if (e.target.classList.contains('view-location-btn')) {
+        return
+      }
+      
       currentSelectedDay = index // Update keyboard navigation state
       selectDay(index)
       // Update keyboard focus visual indicator
       if (window.innerWidth > 768) {
         updateKeyboardFocus()
-        showLocationImages(day)
       }
     })
     
@@ -665,7 +670,7 @@ function renderItinerary(tripDays) {
 }
 
 // Select a specific day
-function selectDay(index) {
+function selectDay(index, shouldZoomMap = false) {
   if (!currentTripData || !currentTripData.days[index]) return
   
   // Remove active class from all cards
@@ -692,9 +697,11 @@ function selectDay(index) {
     behavior: 'smooth'
   })
   
-  // Center map on selected location
+  // Only zoom map if explicitly requested (Enter key press)
   const day = currentTripData.days[index]
-  map.setView(day.coordinates, 10)
+  if (shouldZoomMap) {
+    map.setView(day.coordinates, 10)
+  }
   
   // Highlight marker
   markers.forEach((marker, i) => {
@@ -720,12 +727,8 @@ function addMapMarkers(tripDays) {
     // When marker is clicked, select the corresponding day
     marker.on('click', () => {
       currentSelectedDay = index
-      selectDay(index)
+      selectDay(index) // Don't zoom map on marker click
       updateKeyboardFocus()
-      // On desktop, show images after selecting
-      if (window.innerWidth > 768) {
-        showLocationImages(day)
-      }
     })
     
     markers.push(marker)
@@ -1292,12 +1295,26 @@ function showLocationImagesForDay(dayIndex) {
   }
 }
 
+// View location function for button clicks
+function viewLocation(dayIndex) {
+  if (currentTripData && currentTripData.days && currentTripData.days[dayIndex]) {
+    // Update current selected day
+    currentSelectedDay = dayIndex
+    
+    // Zoom map and show images
+    selectDay(dayIndex, true) // true = shouldZoomMap
+    updateKeyboardFocus()
+    showLocationImages(currentTripData.days[dayIndex])
+  }
+}
+
 // Global functions for HTML onclick events
 window.changeSlide = changeSlide
 window.goToSlide = goToSlide
 window.closeSlideshow = closeSlideshow
 window.showLocationImages = showLocationImages
 window.showLocationImagesForDay = showLocationImagesForDay
+window.viewLocation = viewLocation
 
 // Basic Wikimedia Commons search as final fallback
 async function fetchBasicWikimediaImages(location, country) {
@@ -1611,8 +1628,8 @@ function handleKeyboardNavigation(e) {
     case 'Enter':
       e.preventDefault()
       if (!isSlideshow) {
-        // Show images for current day
-        console.log('Showing images for day', currentSelectedDay)
+        // Zoom map and show images for current day
+        selectDay(currentSelectedDay, true) // true = shouldZoomMap
         showLocationImages(currentTripData.days[currentSelectedDay])
       }
       break
@@ -1628,8 +1645,6 @@ function handleKeyboardNavigation(e) {
 
 // Navigate to a specific day via keyboard
 function navigateToDay(dayIndex) {
-  console.log('navigateToDay called with:', dayIndex, 'Current trip data:', currentTripData)
-  
   if (!currentTripData || !currentTripData.days) return
   
   // Clamp day index to valid range
@@ -1640,6 +1655,11 @@ function navigateToDay(dayIndex) {
   
   // Update visual focus indicator
   updateKeyboardFocus()
+  
+  // Show images for the new day on desktop
+  if (window.innerWidth > 768) {
+    showLocationImages(currentTripData.days[dayIndex])
+  }
 }
 
 // Update visual focus indicator for keyboard navigation
