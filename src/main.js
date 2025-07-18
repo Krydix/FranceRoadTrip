@@ -704,7 +704,8 @@ function selectDay(index, shouldZoomMap = false) {
     map.setView(day.coordinates, 10)
   } else {
     // Just center without changing zoom (pin click or day click)
-    map.panTo(day.coordinates)
+    const currentZoom = map.getZoom()
+    map.setView(day.coordinates, currentZoom)
   }
   
   // Highlight marker
