@@ -6,6 +6,8 @@ let map
 let currentSlideIndex = 0
 let currentImages = []
 let markers = []
+let routeLines = [] // Store all route polylines
+let routeMap = new Map() // Track routes by stop key to avoid duplicates
 let currentTripData = null
 let imageCache = new Map() // Cache for preloaded images
 let preloadingPromises = new Map() // Track ongoing preloading
@@ -53,7 +55,7 @@ async function loadAndRenderTrip() {
     if (customTrip) {
       tripMarkdown = customTrip
     } else {
-      // Load default trip from public/trip.md
+      // Load default trip from public/trip.md (showcase Berlin→Normandy)
       // Handle both development and production paths
       let response = await fetch('./trip.md')
       
@@ -67,7 +69,7 @@ async function loadAndRenderTrip() {
       }
       
       if (!response.ok) {
-        throw new Error('Failed to load default trip')
+        throw new Error('Failed to load trip file')
       }
       
       tripMarkdown = await response.text()
@@ -84,19 +86,432 @@ async function loadAndRenderTrip() {
   }
 }
 
+// Cache for OSM location lookups to avoid repeated API calls
+const locationCache = new Map()
+
+// Load cache from localStorage on startup
+function loadLocationCache() {
+  try {
+    const cached = localStorage.getItem('locationCache')
+    if (cached) {
+      const parsed = JSON.parse(cached)
+      Object.entries(parsed).forEach(([key, value]) => {
+        locationCache.set(key, value)
+      })
+      console.log(`📦 Loaded ${locationCache.size} cached locations from localStorage`)
+    }
+  } catch (error) {
+    console.warn('Failed to load location cache:', error)
+  }
+}
+
+// Save cache to localStorage
+function saveLocationCache() {
+  try {
+    const cacheObj = Object.fromEntries(locationCache)
+    localStorage.setItem('locationCache', JSON.stringify(cacheObj))
+  } catch (error) {
+    console.warn('Failed to save location cache:', error)
+  }
+}
+
+// Initialize cache on load
+loadLocationCache()
+
+// Extract address components from location string
+function extractAddressFromLocation(locationString) {
+  // Remove quotes
+  locationString = locationString.replace(/['"]/g, '')
+  
+  // Try to extract address after comma (e.g., "Name, Street 123, City" -> "Street 123, City")
+  const parts = locationString.split(',').map(s => s.trim())
+  
+  if (parts.length >= 2) {
+    // Return everything except the first part (skip the name)
+    return parts.slice(1).join(', ')
+  }
+  
+  return locationString
+}
+
+// Extract partial name by removing location-specific suffixes
+// E.g., "Parking des Faux de Verzy" -> "Parking des Faux"
+function extractPartialName(locationString) {
+  locationString = locationString.replace(/['"]/g, '')
+  
+  const parts = locationString.split(',').map(s => s.trim())
+  if (parts.length === 0) return null
+  
+  const name = parts[0]
+  
+  // Remove common location suffixes: "de [City]", "à [City]", etc.
+  const patterns = [
+    / de [A-Z][a-zÀ-ÿ]+$/i,  // "de Verzy"
+    / à [A-Z][a-zÀ-ÿ]+$/i,   // "à Paris"
+    / en [A-Z][a-zÀ-ÿ]+$/i,  // "en France"
+    / sur [A-Z][a-zÀ-ÿ]+$/i, // "sur Mer"
+    / - [A-Z][a-zÀ-ÿ]+$/i    // "- Bruges"
+  ]
+  
+  for (const pattern of patterns) {
+    const shortened = name.replace(pattern, '').trim()
+    if (shortened !== name && shortened.length > 5) {
+      return shortened
+    }
+  }
+  
+  return null
+}
+
+// Resolve location string to coordinates using OSM Nominatim API with fallback
+async function resolveLocation(locationString, area = '') {
+  // Check cache first
+  const cacheKey = `${locationString}|${area}`
+  if (locationCache.has(cacheKey)) {
+    return locationCache.get(cacheKey)
+  }
+  
+  try {
+    // Strategy 1: Try with full location string (name + address)
+    let coords = await attemptNominatimSearch(locationString)
+    
+    if (coords) {
+      locationCache.set(cacheKey, coords)
+      saveLocationCache() // Persist to localStorage
+      console.log(`✓ Found location with full string: ${locationString}`)
+      return coords
+    }
+    
+    // Strategy 2: Try with just address (remove business/place name)
+    const addressOnly = extractAddressFromLocation(locationString)
+    if (addressOnly !== locationString) {
+      coords = await attemptNominatimSearch(addressOnly)
+      
+      if (coords) {
+        locationCache.set(cacheKey, coords)
+        saveLocationCache() // Persist to localStorage
+        console.log(`✓ Found location with address fallback: ${addressOnly}`)
+        return coords
+      }
+    }
+    
+    // Strategy 3: Try partial name match (e.g., "Parking des Faux de Verzy" -> "Parking des Faux")
+    const partialName = extractPartialName(locationString)
+    if (partialName && partialName !== locationString) {
+      coords = await attemptNominatimSearch(partialName)
+      
+      if (coords) {
+        locationCache.set(cacheKey, coords)
+        saveLocationCache()
+        console.log(`✓ Found location with partial name: ${partialName}`)
+        return coords
+      }
+    }
+    
+    // Strategy 4: Try with area context if provided
+    if (area) {
+      const withArea = `${addressOnly}, ${area}`
+      coords = await attemptNominatimSearch(withArea)
+      
+      if (coords) {
+        locationCache.set(cacheKey, coords)
+        saveLocationCache() // Persist to localStorage
+        console.log(`✓ Found location with area context: ${withArea}`)
+        return coords
+      }
+    }
+    
+    // Strategy 5: Try structured query with street and city
+    coords = await attemptStructuredSearch(locationString, area)
+    
+    if (coords) {
+      locationCache.set(cacheKey, coords)
+      saveLocationCache() // Persist to localStorage
+      console.log(`✓ Found location with structured search`)
+      return coords
+    }
+    
+    // Strategy 6: Last resort - search by amenity type + city from area
+    if (area) {
+      coords = await attemptAmenitySearch(locationString, area)
+      
+      if (coords) {
+        locationCache.set(cacheKey, coords)
+        saveLocationCache()
+        console.log(`✓ Found location with amenity search`)
+        return coords
+      }
+    }
+    
+    console.warn(`⚠ Location not found after all strategies: ${locationString}`)
+    return null
+    
+  } catch (error) {
+    console.error(`Error resolving location "${locationString}":`, error)
+    return null
+  }
+}
+
+// Attempt a single Nominatim search query
+async function attemptNominatimSearch(query) {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?` + 
+      `q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=1`,
+      {
+        headers: {
+          'User-Agent': 'RoadTripPlanner/1.0'
+        }
+      }
+    )
+    
+    if (!response.ok) {
+      return null
+    }
+    
+    const data = await response.json()
+    
+    if (data.length > 0) {
+      return [parseFloat(data[0].lat), parseFloat(data[0].lon)]
+    }
+    
+    return null
+  } catch (error) {
+    console.error('Nominatim search error:', error)
+    return null
+  }
+}
+
+// Try structured search with extracted components
+async function attemptStructuredSearch(locationString, area) {
+  try {
+    // Extract street number and name
+    const streetMatch = locationString.match(/([^,]+\s+\d+)/i)
+    const cityMatch = area.match(/^([^,]+)/)
+    
+    if (!streetMatch || !cityMatch) {
+      return null
+    }
+    
+    const street = streetMatch[1].trim()
+    const city = cityMatch[1].trim()
+    
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?` + 
+      `street=${encodeURIComponent(street)}&city=${encodeURIComponent(city)}&format=json&limit=1`,
+      {
+        headers: {
+          'User-Agent': 'RoadTripPlanner/1.0'
+        }
+      }
+    )
+    
+    if (!response.ok) {
+      return null
+    }
+    
+    const data = await response.json()
+    
+    if (data.length > 0) {
+      return [parseFloat(data[0].lat), parseFloat(data[0].lon)]
+    }
+    
+    return null
+  } catch (error) {
+    return null
+  }
+}
+
+// Try amenity-based search (parking, restaurant, etc.) in specific area
+async function attemptAmenitySearch(locationString, area) {
+  try {
+    // Extract amenity type from name
+    const name = locationString.split(',')[0].trim().toLowerCase()
+    let amenityType = null
+    
+    if (name.includes('parking')) amenityType = 'parking'
+    else if (name.includes('restaurant') || name.includes('brasserie')) amenityType = 'restaurant'
+    else if (name.includes('café') || name.includes('coffee')) amenityType = 'cafe'
+    else if (name.includes('hotel')) amenityType = 'hotel'
+    else if (name.includes('camping') || name.includes('camp')) amenityType = 'camp_site'
+    
+    if (!amenityType) return null
+    
+    // Extract city from area
+    const cityMatch = area.match(/^([^,]+)/)
+    if (!cityMatch) return null
+    
+    const city = cityMatch[1].trim()
+    
+    // Search for amenity in city
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?` + 
+      `q=${encodeURIComponent(amenityType)}+${encodeURIComponent(city)}&format=json&limit=3&addressdetails=1`,
+      {
+        headers: {
+          'User-Agent': 'RoadTripPlanner/1.0'
+        }
+      }
+    )
+    
+    if (!response.ok) return null
+    
+    const data = await response.json()
+    
+    // Try to find best match by checking if name parts match
+    const nameParts = name.split(/\s+/).filter(p => p.length > 3)
+    
+    for (const result of data) {
+      const resultName = (result.display_name || '').toLowerCase()
+      
+      // Check if any significant name parts match
+      const matchCount = nameParts.filter(part => 
+        resultName.includes(part.toLowerCase())
+      ).length
+      
+      if (matchCount >= Math.min(2, nameParts.length / 2)) {
+        return [parseFloat(result.lat), parseFloat(result.lon)]
+      }
+    }
+    
+    // If no good match, return first result as fallback
+    if (data.length > 0) {
+      console.log(`  ⚠ Using approximate ${amenityType} location in ${city}`)
+      return [parseFloat(data[0].lat), parseFloat(data[0].lon)]
+    }
+    
+    return null
+  } catch (error) {
+    return null
+  }
+}
+
+// Resolve all stop locations to coordinates (optimized with progressive rendering)
+async function resolveStopCoordinates(tripData, progressCallback = null, renderCallback = null) {
+  const BATCH_SIZE = 5 // Process 5 locations in parallel
+  const BATCH_DELAY = 1000 // 1 second delay between batches (respects OSM rate limits)
+  
+  // Collect all stops that need resolution (in order)
+  const stopsToResolve = []
+  for (const day of tripData.days) {
+    for (const stop of day.stops) {
+      if (stop.location && !stop.coords) {
+        stopsToResolve.push({ stop, day })
+      }
+    }
+  }
+  
+  console.log(`🔍 Resolving ${stopsToResolve.length} locations with progressive rendering...`)
+  
+  let resolvedCount = 0
+  
+  // Process in batches
+  for (let i = 0; i < stopsToResolve.length; i += BATCH_SIZE) {
+    const batch = stopsToResolve.slice(i, i + BATCH_SIZE)
+    const batchNumber = Math.floor(i / BATCH_SIZE) + 1
+    const totalBatches = Math.ceil(stopsToResolve.length / BATCH_SIZE)
+    
+    console.log(`📍 Processing batch ${batchNumber}/${totalBatches} (${batch.length} locations)...`)
+    
+    // Resolve all locations in this batch in parallel
+    const promises = batch.map(({ stop, day }) => 
+      resolveLocation(stop.location, stop.area)
+        .then(coords => {
+          if (coords) {
+            stop.coords = coords
+            resolvedCount++
+            console.log(`  ✓ ${stop.name}`)
+            
+            // Immediately render this stop!
+            if (renderCallback) {
+              renderCallback(stop, day)
+            }
+            
+            // Update progress
+            if (progressCallback) {
+              progressCallback(resolvedCount, stopsToResolve.length)
+            }
+            
+            return { success: true, stop }
+          } else {
+            // OSM resolution failed - use fallback coordinates if provided
+            if (stop.fallbackCoords) {
+              stop.coords = stop.fallbackCoords
+              stop.usingFallback = true // Flag for UI warning
+              resolvedCount++
+              console.warn(`  ⚠️ Using fallback coordinates for ${stop.name}: [${stop.fallbackCoords[0]}, ${stop.fallbackCoords[1]}]`)
+              
+              // Immediately render this stop with fallback coords
+              if (renderCallback) {
+                renderCallback(stop, day)
+              }
+              
+              // Update progress
+              if (progressCallback) {
+                progressCallback(resolvedCount, stopsToResolve.length)
+              }
+              
+              return { success: true, stop, fallback: true }
+            } else {
+              console.warn(`  ⚠ Failed: ${stop.name} (${stop.location}) - No fallback coordinates provided`)
+              return { success: false, stop }
+            }
+          }
+        })
+        .catch(error => {
+          console.error(`  ✗ Error for ${stop.name}:`, error)
+          
+          // Even on error, try fallback coordinates
+          if (stop.fallbackCoords) {
+            stop.coords = stop.fallbackCoords
+            stop.usingFallback = true
+            resolvedCount++
+            console.warn(`  ⚠️ Error fallback: Using provided coordinates for ${stop.name}`)
+            
+            if (renderCallback) {
+              renderCallback(stop, day)
+            }
+            
+            if (progressCallback) {
+              progressCallback(resolvedCount, stopsToResolve.length)
+            }
+            
+            return { success: true, stop, fallback: true }
+          }
+          
+          return { success: false, stop, error }
+        })
+    )
+    
+    // Wait for all promises in this batch
+    await Promise.all(promises)
+    
+    // Delay before next batch (except for the last batch)
+    if (i + BATCH_SIZE < stopsToResolve.length) {
+      await new Promise(resolve => setTimeout(resolve, BATCH_DELAY))
+    }
+  }
+  
+  console.log(`✅ Resolved ${resolvedCount}/${stopsToResolve.length} locations`)
+  
+  return tripData
+}
+
 // Parse trip markdown into structured data
 function parseTripMarkdown(markdown) {
   const lines = markdown.split('\n')
   const tripData = {
     title: '',
     subtitle: '',
+    startDate: '',
+    endDate: '',
     days: []
   }
   
   let currentDay = null
-  let currentSection = null
+  let currentStop = null
   let inFrontmatter = false
-  let locationInfo = {}
+  let currentField = null
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim()
@@ -115,202 +530,125 @@ function parseTripMarkdown(markdown) {
       else if (line.startsWith('subtitle:')) {
         tripData.subtitle = line.substring(9).trim().replace(/['"]/g, '')
       }
-      // We could also handle startDate and endDate if needed
+      else if (line.startsWith('startDate:')) {
+        tripData.startDate = line.substring(10).trim().replace(/['"]/g, '')
+      }
+      else if (line.startsWith('endDate:')) {
+        tripData.endDate = line.substring(8).trim().replace(/['"]/g, '')
+      }
       continue
     }
     
-    // Handle legacy format title
-    if (line.startsWith('# ')) {
-      tripData.title = line.substring(2).trim()
-    }
-    
-    // Parse subtitle info (legacy format)
-    else if (line.startsWith('**Duration:**')) {
-      const duration = line.substring(13).trim()
-      tripData.subtitle = duration
-    }
-    else if (line.startsWith('**Dates:**')) {
-      const dates = line.substring(10).trim()
-      if (tripData.subtitle) {
-        tripData.subtitle += ' • ' + dates
-      } else {
-        tripData.subtitle = dates
+    // Parse day headers (new format without destination in title)
+    if (line.startsWith('## Day ')) {
+      // Save previous day with its stops
+      if (currentDay && currentDay.stops.length > 0) {
+        tripData.days.push(currentDay)
       }
-    }
-    else if (line.startsWith('**Type:**')) {
-      const type = line.substring(9).trim()
-      if (tripData.subtitle) {
-        tripData.subtitle += ' • ' + type
-      } else {
-        tripData.subtitle = type
-      }
-    }
-    
-    // Parse day headers - Support both old and new formats
-    else if (line.startsWith('## Day ')) {
-      // If we have a current day, add it to our days array
-      if (currentDay) {
-        // Only save valid days with coordinates
-        if (currentDay.coordinates.length === 2) {
-          tripData.days.push(currentDay)
-        }
-      }
-      
-      // Reset location info for the new day
-      locationInfo = {}
       
       // Parse day number
       const dayNumberMatch = line.match(/## Day (\d+)/)
       const dayNumber = dayNumberMatch ? parseInt(dayNumberMatch[1]) : tripData.days.length + 1
       
-      // Extract the title part after the day number
-      let dayTitle = line.split(':').slice(1).join(':').trim()
-      let city = '', country = ''
-      
-      // Try to parse city and country from title
-      if (dayTitle.includes(',')) {
-        const parts = dayTitle.split(',')
-        city = parts[0].trim()
-        country = parts[1].trim()
-      } else {
-        // Just use dayTitle as city
-        city = dayTitle
-      }
-      
       currentDay = {
         id: dayNumber,
         day: `Day ${dayNumber}`,
-        city: city,
-        country: country,
-        date: '',
-        coordinates: [],
-        camping: '',
-        distance: '',
-        images: [],
-        description: '',
-        activities: []
+        stops: []
       }
-      currentSection = 'day'
+      currentStop = null
+      currentField = null
     }
     
-    // Parse location info for new format
-    else if (line.startsWith('- **Location**:')) {
-      const locationParts = line.substring(14).trim().split(',')
-      if (locationParts.length >= 2) {
-        if (currentDay) {
-          currentDay.city = locationParts[0].trim()
-          currentDay.country = locationParts[1].trim()
+    // Parse stop headers (### Stop X: Type)
+    else if (line.startsWith('### Stop ')) {
+      // Save previous stop if exists
+      if (currentStop && currentDay) {
+        currentDay.stops.push(currentStop)
+      }
+      
+      // Extract stop type from header (e.g., "### Stop 1: Sleep" -> "Sleep")
+      const stopTypeMatch = line.match(/### Stop \d+:\s*(.+)/)
+      const stopTypeHint = stopTypeMatch ? stopTypeMatch[1].trim().toLowerCase() : null
+      
+      currentStop = {
+        name: '',
+        type: stopTypeHint || 'sightseeing', // default type
+        location: '',
+        area: '',
+        time: '',
+        duration: '',
+        travelMode: '',
+        travelTime: '',
+        coords: null,
+        fallbackCoords: null // LLM-provided coordinates as last resort
+      }
+      currentField = null
+    }
+    
+    // Parse stop fields
+    else if (currentStop) {
+      if (line.startsWith('**Name:**')) {
+        currentStop.name = line.substring(9).trim()
+        currentField = null
+      }
+      else if (line.startsWith('**Type:**')) {
+        currentStop.type = line.substring(9).trim().toLowerCase()
+        currentField = null
+      }
+      else if (line.startsWith('**Location:**')) {
+        // Extract location from quotes if present
+        const locationMatch = line.match(/\*\*Location:\*\*\s*"(.+?)"/)
+        if (locationMatch) {
+          currentStop.location = locationMatch[1].trim()
         } else {
-          locationInfo.city = locationParts[0].trim()
-          locationInfo.country = locationParts[1].trim()
+          currentStop.location = line.substring(13).trim().replace(/['"]/g, '')
         }
-      } else if (locationParts.length === 1) {
-        if (currentDay) {
-          currentDay.city = locationParts[0].trim()
-        } else {
-          locationInfo.city = locationParts[0].trim()
+        currentField = null
+      }
+      else if (line.startsWith('**Area:**')) {
+        currentStop.area = line.substring(9).trim()
+        currentField = null
+      }
+      else if (line.startsWith('**Coordinates:**')) {
+        // Parse fallback coordinates (e.g., "48.1234, 16.5678")
+        const coordsText = line.substring(16).trim()
+        const coordsMatch = coordsText.match(/([\d.-]+)[,\s]+([\d.-]+)/)
+        if (coordsMatch) {
+          const lat = parseFloat(coordsMatch[1])
+          const lon = parseFloat(coordsMatch[2])
+          if (!isNaN(lat) && !isNaN(lon)) {
+            currentStop.fallbackCoords = [lat, lon]
+            console.log(`📍 Fallback coordinates provided for ${currentStop.name}: [${lat}, ${lon}]`)
+          }
         }
+        currentField = null
       }
-    }
-    else if (line.startsWith('- **Coords**:')) {
-      const coordsStr = line.substring(12).trim()
-      const coords = coordsStr.split(',').map(c => parseFloat(c.trim()))
-      if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
-        if (currentDay) {
-          currentDay.coordinates = coords
-        } else {
-          locationInfo.coordinates = coords
+      else if (line.startsWith('**Time:**')) {
+        currentStop.time = line.substring(9).trim()
+        currentField = null
+      }
+      else if (line.startsWith('**Duration:**')) {
+        currentStop.duration = line.substring(13).trim()
+        currentField = null
+      }
+      else if (line.startsWith('**Travel from previous:**')) {
+        const travelInfo = line.substring(25).trim()
+        // Parse "car, 2.5 hours" or "foot, 15 minutes" or "public_transport, 30 minutes"
+        const travelMatch = travelInfo.match(/^(\w+),\s*(.+)$/)
+        if (travelMatch) {
+          currentStop.travelMode = travelMatch[1].trim()
+          currentStop.travelTime = travelMatch[2].trim()
         }
-      }
-    }
-    else if (line.startsWith('- **Camping**:')) {
-      const camping = line.substring(14).trim()
-      if (currentDay) {
-        currentDay.camping = camping
-      } else {
-        locationInfo.camping = camping
-      }
-    }
-    else if (line.startsWith('- **Notes**:')) {
-      const notes = line.substring(11).trim()
-      if (currentDay) {
-        currentDay.description = notes
-      } else {
-        locationInfo.description = notes
-      }
-    }
-    
-    // Parse day details with various formats (legacy format)
-    else if (currentDay && (line.startsWith('**Date:**') || line.startsWith('- **Date:**'))) {
-      currentDay.date = line.includes('- **Date:**') 
-        ? line.substring(11).trim() 
-        : line.substring(9).trim()
-    }
-    else if (currentDay && (line.startsWith('**Coordinates:**') || line.startsWith('- **Coords:**'))) {
-      const coordsStr = line.includes('- **Coords:**') 
-        ? line.substring(13).trim() 
-        : line.substring(16).trim()
-      
-      const coords = coordsStr.split(',').map(c => parseFloat(c.trim()))
-      
-      // Make sure we have valid coordinates
-      if (coords.length >= 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
-        currentDay.coordinates = coords
-      }
-    }
-    else if (currentDay && (line.startsWith('**Camping:**') || line.startsWith('- **Camping:**'))) {
-      currentDay.camping = line.includes('- **Camping:**') 
-        ? line.substring(14).trim() 
-        : line.substring(12).trim()
-    }
-    else if (currentDay && (line.startsWith('**Distance:**') || line.startsWith('- **Distance:**'))) {
-      currentDay.distance = line.includes('- **Distance:**') 
-        ? line.substring(15).trim() 
-        : line.substring(13).trim()
-    }
-    else if (currentDay && (line.startsWith('**Images:**') || line.startsWith('- **Images:**'))) {
-      const imagesStr = line.includes('- **Images:**') 
-        ? line.substring(13).trim() 
-        : line.substring(11).trim()
-      
-      // Parse comma-separated image locations
-      if (imagesStr) {
-        currentDay.images = imagesStr.split(',').map(img => img.trim()).filter(img => img.length > 0)
-      }
-    }
-    else if (currentDay && line.startsWith('**Activities:**')) {
-      currentSection = 'activities'
-    }
-    else if (currentDay && (line.startsWith('- **Notes:**') || line.startsWith('**Notes:**'))) {
-      const notes = line.includes('- **Notes:**') 
-        ? line.substring(12).trim() 
-        : line.substring(10).trim()
-      
-      if (notes) {
-        currentDay.description = notes
-      }
-    }
-    
-    // Parse activities
-    else if (currentSection === 'activities' && line.startsWith('- ')) {
-      if (currentDay) {
-        if (!currentDay.activities) currentDay.activities = [];
-        currentDay.activities.push(line.substring(2).trim())
-      }
-    }
-    
-    // Parse description (lines between day header and first bold field)
-    else if (currentDay && currentSection === 'day' && line && !line.startsWith('**') && !line.startsWith('-')) {
-      if (currentDay.description) {
-        currentDay.description += ' ' + line
-      } else {
-        currentDay.description = line
+        currentField = null
       }
     }
   }
   
-  // Add the last day if it exists and has coordinates
-  if (currentDay && currentDay.coordinates.length === 2) {
+  // Save last stop and day
+  if (currentStop && currentDay) {
+    currentDay.stops.push(currentStop)
+  }
+  if (currentDay && currentDay.stops.length > 0) {
     tripData.days.push(currentDay)
   }
   
@@ -320,48 +658,440 @@ function parseTripMarkdown(markdown) {
     throw new Error('Invalid trip format');
   }
   
-  // Ensure all days have coordinates
-  for (const day of tripData.days) {
-    if (!day.coordinates || day.coordinates.length !== 2 || 
-        isNaN(day.coordinates[0]) || isNaN(day.coordinates[1])) {
-      console.error(`Missing or invalid coordinates for day ${day.day}`);
-      throw new Error(`Invalid coordinates for ${day.day}`);
-    }
-  }
-  
-  console.log('Parsed trip data:', tripData);
+  console.log('Parsed trip data (new format):', tripData);
   return tripData
 }
 
 // Render the page with parsed trip data
-function renderPage(tripData) {
+async function renderPage(tripData) {
   currentTripData = tripData
   
   // Update header
   document.querySelector('.header h1').textContent = `🚗 ${tripData.title}`
   document.getElementById('trip-subtitle').textContent = tripData.subtitle
   
-  // Clear existing content
-  document.getElementById('itinerary').innerHTML = ''
+  // Clear existing markers and routes
   markers.forEach(marker => map.removeLayer(marker))
   markers = []
+  markerMap.clear()
   
-  // Clear existing route lines
+  // Clear route tracking
+  routeLines.forEach(line => map.removeLayer(line))
+  routeLines = []
+  routeMap.clear()
+  
   map.eachLayer(function(layer) {
     if (layer instanceof L.Polyline) {
       map.removeLayer(layer)
     }
   })
   
-  // Render itinerary
+  // Render initial itinerary structure (without coordinates)
+  const itineraryContainer = document.getElementById('itinerary')
+  itineraryContainer.innerHTML = ''
   renderItinerary(tripData.days)
   
-  // Add map markers and draw route
-  addMapMarkers(tripData.days)
-  drawRoute(tripData.days)
+  // Show loading overlay with progress
+  const loadingOverlay = document.createElement('div')
+  loadingOverlay.id = 'loading-overlay'
+  loadingOverlay.innerHTML = `
+    <div style="position: fixed; top: 0; left: 0; right: 0; background: rgba(255, 255, 255, 0.95); padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000; text-align: center;">
+      <div style="font-size: 1.1rem; margin-bottom: 10px; color: #333;">🗺️ Loading locations...</div>
+      <div style="width: 100%; max-width: 400px; margin: 0 auto; background: #f0f0f0; border-radius: 10px; overflow: hidden; height: 20px;">
+        <div id="loading-progress-bar" style="height: 100%; background: linear-gradient(90deg, #4CAF50, #45a049); width: 0%; transition: width 0.3s ease;"></div>
+      </div>
+      <div id="loading-progress-text" style="margin-top: 8px; font-size: 0.85rem; color: #666;">Starting...</div>
+    </div>
+  `
+  document.body.appendChild(loadingOverlay)
   
-  // Start background image preloading for all days
+  // Create a map to track rendered stops
+  const renderedStops = new Set()
+  
+  // Resolve coordinates with progressive rendering
+  await resolveStopCoordinates(
+    tripData,
+    // Progress callback
+    (current, total) => {
+      const progressBar = document.getElementById('loading-progress-bar')
+      const progressText = document.getElementById('loading-progress-text')
+      
+      if (progressBar && progressText) {
+        const percentage = Math.round((current / total) * 100)
+        progressBar.style.width = `${percentage}%`
+        progressText.textContent = `${current} / ${total} locations resolved (${percentage}%)`
+      }
+    },
+    // Render callback - called immediately when each stop is resolved
+    (stop, day) => {
+      const stopKey = `${day.id}-${stop.name}`
+      
+      // Avoid rendering duplicates
+      if (renderedStops.has(stopKey)) return
+      renderedStops.add(stopKey)
+      
+      // Add marker with animation
+      addSingleMarker(stop, day, tripData.days)
+      
+      // Update the stop item in the sidebar with coordinates
+      updateStopItemWithCoords(stop, day)
+    }
+  )
+  
+  // Remove loading overlay with fade out
+  if (loadingOverlay) {
+    loadingOverlay.style.transition = 'opacity 0.3s ease'
+    loadingOverlay.style.opacity = '0'
+    setTimeout(() => {
+      loadingOverlay.remove()
+    }, 300)
+  }
+  
+  // Note: Routes are drawn progressively in drawRoutesToStop() during loading
+  // Just fit the map to show all loaded coordinates
+  const allCoords = []
+  tripData.days.forEach(day => {
+    day.stops.forEach(stop => {
+      if (stop.coords) allCoords.push(stop.coords)
+    })
+  })
+  
+  if (allCoords.length > 0) {
+    const bounds = L.latLngBounds(allCoords)
+    map.fitBounds(bounds, { padding: [50, 50] })
+  }
+  
+  // Start background image preloading
   startBackgroundImagePreloading(tripData.days)
+}
+
+// Add a single marker to the map with animation
+function addSingleMarker(stop, day, allDays) {
+  if (!stop.coords) return
+  
+  const dayIndex = allDays.findIndex(d => d.id === day.id)
+  const stopIndex = day.stops.findIndex(s => s.name === stop.name)
+  
+  if (dayIndex === -1 || stopIndex === -1) return
+  
+  const icon = createStopIcon(stop.type)
+  const marker = L.marker(stop.coords, { icon, opacity: 0 }).addTo(map)
+  
+  // Animate marker appearance
+  setTimeout(() => {
+    marker.setOpacity(1)
+  }, 50)
+  
+  // Create popup with stop info
+  const timeInfo = stop.time ? `<div style="color: #666; font-size: 0.85rem;">${stop.time}</div>` : ''
+  const travelInfo = stop.travelMode && stopIndex > 0 ? 
+    `<div style="color: ${getTravelModeColor(stop.travelMode)}; font-size: 0.85rem; margin-top: 5px;">
+      ${stop.travelMode === 'car' ? '🚗' : stop.travelMode === 'foot' ? '🚶' : '🚌'} ${stop.travelTime || ''}
+    </div>` : ''
+  
+  // Add warning if using fallback coordinates
+  const fallbackWarning = stop.usingFallback ? 
+    `<div style="background: #fff3cd; color: #856404; padding: 5px; margin-top: 5px; border-radius: 3px; font-size: 0.75rem;">
+      ⚠️ Approximate location (LLM estimate)
+    </div>` : ''
+  
+  marker.bindPopup(`
+    <div style="text-align: center; padding: 5px;">
+      <div style="font-size: 1.2rem; margin-bottom: 5px;">${getStopIcon(stop.type)}</div>
+      <h4 style="margin: 0 0 5px 0; font-size: 1rem; color: #333;">${stop.name}</h4>
+      <p style="margin: 0; font-size: 0.9rem; color: #666; font-weight: 500;">${day.day} - Stop ${stopIndex + 1}</p>
+      ${timeInfo}
+      ${travelInfo}
+      ${fallbackWarning}
+    </div>
+  `)
+  
+  // When marker is clicked, highlight sidebar item and scroll to it
+  marker.on('click', () => {
+    // Remove previous highlighting
+    document.querySelectorAll('.stop-item').forEach(item => {
+      item.classList.remove('highlighted')
+    })
+    
+    // Find and highlight the corresponding sidebar item
+    const sidebarStop = document.querySelector(`.day-card[data-day="${dayIndex}"] .stop-item[data-stop="${stopIndex}"]`)
+    if (sidebarStop) {
+      sidebarStop.classList.add('highlighted')
+      
+      // Expand the day card if not already expanded
+      const dayCard = document.querySelector(`.day-card[data-day="${dayIndex}"]`)
+      if (dayCard && !dayCard.classList.contains('expanded')) {
+        dayCard.classList.add('expanded')
+      }
+      
+      // If it's in a parking group, expand that too
+      const parkingGroup = sidebarStop.closest('.parking-group')
+      if (parkingGroup && !parkingGroup.classList.contains('expanded')) {
+        parkingGroup.classList.add('expanded')
+      }
+      
+      // Scroll sidebar to show the highlighted item
+      const sidebar = document.querySelector('.sidebar')
+      const sidebarRect = sidebar.getBoundingClientRect()
+      const stopRect = sidebarStop.getBoundingClientRect()
+      const offset = 100
+      
+      const scrollTop = sidebar.scrollTop + (stopRect.top - sidebarRect.top) - offset
+      sidebar.scrollTo({
+        top: scrollTop,
+        behavior: 'smooth'
+      })
+    }
+    
+    currentSelectedDay = dayIndex
+    selectDay(dayIndex, false, false)
+    updateKeyboardFocus()
+  })
+  
+  // Store marker reference
+  const key = `${dayIndex}-${stopIndex}`
+  markerMap.set(key, marker)
+  markers.push(marker)
+}
+
+// Update stop item in sidebar to show it has coordinates (with animation)
+function updateStopItemWithCoords(stop, day) {
+  const dayIndex = currentTripData.days.findIndex(d => d.id === day.id)
+  const stopIndex = day.stops.findIndex(s => s.name === stop.name)
+  
+  if (dayIndex === -1 || stopIndex === -1) return
+  
+  const stopItem = document.querySelector(`.day-card[data-day="${dayIndex}"] .stop-item[data-stop="${stopIndex}"]`)
+  
+  if (stopItem) {
+    // Add a subtle flash animation to show it's loaded
+    stopItem.style.animation = 'fadeIn 0.5s ease-in'
+    stopItem.classList.add('loaded')
+    
+    // Add indicator - checkmark for normal resolution, warning for fallback
+    const stopHeader = stopItem.querySelector('.stop-header')
+    if (stopHeader && !stopHeader.querySelector('.loaded-indicator')) {
+      const indicator = document.createElement('span')
+      indicator.className = 'loaded-indicator'
+      
+      if (stop.usingFallback) {
+        // Warning indicator for fallback coordinates
+        indicator.textContent = '⚠️'
+        indicator.title = 'Using approximate location (LLM estimate)'
+        indicator.style.cssText = 'color: #ff9800; font-size: 0.9rem; margin-left: 5px; opacity: 0; animation: fadeIn 0.3s ease-in forwards; cursor: help;'
+      } else {
+        // Checkmark for successful OSM resolution
+        indicator.textContent = '✓'
+        indicator.style.cssText = 'color: #4CAF50; font-size: 0.8rem; margin-left: 5px; opacity: 0; animation: fadeIn 0.3s ease-in forwards;'
+      }
+      
+      stopHeader.appendChild(indicator)
+    }
+  }
+  
+  // Draw route segment to this stop if previous stop has coordinates
+  drawRoutesToStop(day, stopIndex, currentTripData.days)
+  
+  // IMPORTANT: Also redraw routes for any NEXT stops that were already rendered
+  // (in case they were waiting for this stop's coordinates)
+  redrawRoutesForDependentStops(day, stopIndex, currentTripData.days)
+}
+
+// Redraw routes for stops that depend on this newly-resolved stop
+function redrawRoutesForDependentStops(resolvedDay, resolvedStopIndex, allDays) {
+  const resolvedDayIndex = allDays.findIndex(d => d.id === resolvedDay.id)
+  if (resolvedDayIndex === -1) return
+  
+  // Check if next stop on same day has coords (needs redraw)
+  if (resolvedStopIndex < resolvedDay.stops.length - 1) {
+    const nextStop = resolvedDay.stops[resolvedStopIndex + 1]
+    if (nextStop && nextStop.coords) {
+      console.log(`  🔄 Redrawing route for ${nextStop.name} after ${resolvedDay.stops[resolvedStopIndex].name} resolved`)
+      drawRoutesToStop(resolvedDay, resolvedStopIndex + 1, allDays)
+    }
+  }
+  
+  // Check if this is the LAST stop of a day - redraw NEXT day's first stop (sleep) if it exists
+  if (resolvedStopIndex === resolvedDay.stops.length - 1 && resolvedDayIndex < allDays.length - 1) {
+    const nextDay = allDays[resolvedDayIndex + 1]
+    if (nextDay && nextDay.stops.length > 0) {
+      const firstStopOfNextDay = nextDay.stops[0]
+      if (firstStopOfNextDay && firstStopOfNextDay.coords && firstStopOfNextDay.type === 'sleep') {
+        console.log(`  🔄 Redrawing cross-day route for ${firstStopOfNextDay.name} after ${resolvedDay.stops[resolvedStopIndex].name} resolved`)
+        drawRoutesToStop(nextDay, 0, allDays)
+      }
+    }
+  }
+}
+
+// Draw route segments progressively as stops are loaded
+function drawRoutesToStop(day, stopIndex, allDays) {
+  const stop = day.stops[stopIndex]
+  if (!stop.coords) return
+  
+  const previousStop = stopIndex > 0 ? day.stops[stopIndex - 1] : null
+  const dayIndex = allDays.findIndex(d => d.id === day.id)
+  
+  // Determine where to draw from based on travel mode transitions
+  let startCoords = null
+  let shouldDrawReturn = false
+  let returnToStop = null
+  
+  // Special case: Sleep stop as first stop of Day 2+ (new format)
+  // This represents where you slept last night, need to draw from previous day's last activity
+  if (stopIndex === 0 && stop.type === 'sleep' && dayIndex > 0) {
+    const previousDay = allDays[dayIndex - 1]
+    if (!previousDay || previousDay.stops.length === 0) return
+    
+    // Find last stop of previous day (last activity before sleep)
+    const lastStopOfPreviousDay = previousDay.stops[previousDay.stops.length - 1]
+    if (!lastStopOfPreviousDay || !lastStopOfPreviousDay.coords) return
+    
+    // Find last parking of previous day to determine if we need a return loop
+    let lastParkingOfPreviousDay = null
+    for (let i = previousDay.stops.length - 1; i >= 0; i--) {
+      if (previousDay.stops[i].type === 'parking') {
+        lastParkingOfPreviousDay = previousDay.stops[i]
+        break
+      }
+    }
+    
+    // If last activity was non-car and there was a parking, draw return path + car route
+    if (lastParkingOfPreviousDay && lastParkingOfPreviousDay.coords &&
+        lastStopOfPreviousDay.type !== 'parking' &&
+        (lastStopOfPreviousDay.travelMode === 'foot' || lastStopOfPreviousDay.travelMode === 'public_transport')) {
+      
+      // Draw return to parking
+      const returnStartCoords = lastStopOfPreviousDay.coords
+      const returnColor = getTravelModeColor(lastStopOfPreviousDay.travelMode || 'foot')
+      const returnDash = (lastStopOfPreviousDay.travelMode === 'foot' || !lastStopOfPreviousDay.travelMode) ? '5, 10' : 
+                         (lastStopOfPreviousDay.travelMode === 'public_transport' ? '10, 5' : '5, 10')
+      
+      const returnLine = L.polyline([returnStartCoords, lastParkingOfPreviousDay.coords], {
+        color: returnColor,
+        weight: 3,
+        opacity: 0,
+        dashArray: returnDash,
+        className: 'return-to-parking-line'
+      }).addTo(map)
+      
+      setTimeout(() => {
+        returnLine.setStyle({ opacity: 0.7 })
+      }, 100)
+      
+      // Then draw car route from parking to sleep
+      startCoords = lastParkingOfPreviousDay.coords
+    } else {
+      // No parking loop, draw directly from last activity (assume car mode)
+      startCoords = lastStopOfPreviousDay.coords
+    }
+  }
+  // Within-day routing (stopIndex > 0)
+  else if (stopIndex > 0) {
+    // Check if current stop has car mode or is parking (always needs car route)
+    if (stop.travelMode === 'car' || stop.type === 'parking') {
+      // Find where we last left the car (parking or last car stop)
+      let lastCarLocation = null
+      
+      // Look backwards through THIS day
+      for (let i = stopIndex - 1; i >= 0; i--) {
+        const checkStop = day.stops[i]
+        if (checkStop.type === 'parking' || checkStop.travelMode === 'car') {
+          lastCarLocation = checkStop
+          break
+        }
+      }
+      
+      // If we found a car location in current day and previous stop was non-car
+      if (lastCarLocation && lastCarLocation.coords && previousStop &&
+          previousStop.type !== 'parking' &&
+          (previousStop.travelMode === 'foot' || previousStop.travelMode === 'public_transport')) {
+        
+        // Draw return path from previous stop back to car
+        const returnColor = getTravelModeColor(previousStop.travelMode || 'foot')
+        const returnDash = (previousStop.travelMode === 'foot' || !previousStop.travelMode) ? '5, 10' : 
+                           (previousStop.travelMode === 'public_transport' ? '10, 5' : '5, 10')
+        
+        const returnLine = L.polyline([previousStop.coords, lastCarLocation.coords], {
+          color: returnColor,
+          weight: 3,
+          opacity: 0,
+          dashArray: returnDash,
+          className: 'return-to-parking-line'
+        }).addTo(map)
+        
+        setTimeout(() => {
+          returnLine.setStyle({ opacity: 0.7 })
+        }, 100)
+        
+        // Then draw car route from car location to current stop
+        startCoords = lastCarLocation.coords
+      } else if (previousStop && previousStop.coords) {
+        // Just draw from previous stop
+        startCoords = previousStop.coords
+      }
+    }
+    // Non-car travel modes (foot/public_transport)
+    else if (stop.travelMode === 'foot' || stop.travelMode === 'public_transport') {
+      // Check if we're starting from a parking/car stop
+      if (previousStop && (previousStop.type === 'parking' || previousStop.travelMode === 'car')) {
+        // Starting foot/transit journey from parking/car
+        startCoords = previousStop.coords
+      } else {
+        // Continue foot/transit from previous stop
+        for (let i = stopIndex - 1; i >= 0; i--) {
+          if (day.stops[i].coords) {
+            startCoords = day.stops[i].coords
+            break
+          }
+        }
+      }
+    }
+    // Default case - no specific travel mode
+    else {
+      // Draw from previous stop with coordinates
+      for (let i = stopIndex - 1; i >= 0; i--) {
+        if (day.stops[i].coords) {
+          startCoords = day.stops[i].coords
+          break
+        }
+      }
+    }
+  } // Close the "else if (stopIndex > 0)" block
+  
+  // Draw the main route segment
+  if (startCoords) {
+    const dayIndex = allDays.findIndex(d => d.id === day.id)
+    const routeKey = `${dayIndex}-${stopIndex}` // Unique key for this route segment
+    
+    // Check if route already exists - if so, remove it first (for redraw scenarios)
+    const existingRoute = routeMap.get(routeKey)
+    if (existingRoute) {
+      map.removeLayer(existingRoute)
+      const index = routeLines.indexOf(existingRoute)
+      if (index > -1) routeLines.splice(index, 1)
+    }
+    
+    const color = getTravelModeColor(stop.travelMode || 'car')
+    const dashArray = stop.travelMode === 'foot' ? '5, 10' : 
+                     stop.travelMode === 'public_transport' ? '10, 5' : null
+    
+    const line = L.polyline([startCoords, stop.coords], {
+      color: color,
+      weight: 3,
+      opacity: 0,
+      dashArray: dashArray
+    }).addTo(map)
+    
+    // Store the route
+    routeMap.set(routeKey, line)
+    routeLines.push(line)
+    
+    // Animate the line appearing
+    setTimeout(() => {
+      line.setStyle({ opacity: 0.7 })
+    }, 100)
+  }
 }
 
 // Setup modal event handlers
@@ -897,40 +1627,277 @@ function clearCampsites() {
   campsiteMarkers = []
 }
 
+// Get icon/emoji for stop type
+function getStopIcon(type) {
+  const icons = {
+    'start': '🏠',
+    'sleep': '🏕️',
+    'food': '🍽️',
+    'sightseeing': '🏛️',
+    'parking': '🅿️',
+    'end': '🏁'
+  }
+  return icons[type] || '📍'
+}
+
+// Get color for travel mode
+function getTravelModeColor(mode) {
+  const colors = {
+    'car': '#007bff',
+    'foot': '#28a745',
+    'public_transport': '#fd7e14'
+  }
+  return colors[mode] || '#6c757d'
+}
+
 // Render itinerary in sidebar
 function renderItinerary(tripDays) {
   const itineraryContainer = document.getElementById('itinerary')
   
-  tripDays.forEach((day, index) => {
+  tripDays.forEach((day, dayIndex) => {
     const dayCard = document.createElement('div')
     dayCard.className = 'day-card'
-    dayCard.setAttribute('data-day', index)
+    dayCard.setAttribute('data-day', dayIndex)
+    
+    // Get first location (usually sleep) for day title
+    const firstStop = day.stops[0]
+    const dayTitle = firstStop ? firstStop.area || firstStop.name : `Day ${day.id}`
+    
+    // Identify parking groups for this day
+    const parkingGroups = identifyParkingGroups(day)
+    
+    // Create stops list HTML with parking group hierarchy
+    let stopsHtml = ''
+    let processedIndices = new Set()
+    
+    day.stops.forEach((stop, stopIndex) => {
+      // Skip if already processed as part of parking group
+      if (processedIndices.has(stopIndex)) return
+      
+      const icon = getStopIcon(stop.type)
+      const timeDisplay = stop.time || ''
+      const durationDisplay = stop.duration ? ` (${stop.duration})` : ''
+      
+      // Check if this is a parking stop with children
+      const parkingGroup = parkingGroups.find(g => g.parkingIndex === stopIndex)
+      
+      if (parkingGroup && parkingGroup.activities.length > 0) {
+        // Render parking stop with children
+        stopsHtml += `
+          <div class="stop-item parking-group" data-stop="${stopIndex}">
+            <div class="stop-header">
+              <span class="stop-icon">${icon}</span>
+              <span class="stop-name">${stop.name}</span>
+              <span class="expand-indicator">▼</span>
+            </div>
+            <div class="stop-details">
+              ${timeDisplay ? `<div class="stop-time">${timeDisplay}${durationDisplay}</div>` : ''}
+              ${stop.travelMode && stopIndex > 0 ? `
+                <div class="stop-travel" style="color: ${getTravelModeColor(stop.travelMode)}">
+                  🚗 ${stop.travelTime || ''}
+                </div>
+              ` : ''}
+            </div>
+            <div class="parking-activities">
+        `
+        
+        // Render child activities
+        parkingGroup.activities.forEach(({ stop: activityStop, index: activityIndex }) => {
+          processedIndices.add(activityIndex)
+          const activityIcon = getStopIcon(activityStop.type)
+          const activityTime = activityStop.time || ''
+          const activityDuration = activityStop.duration ? ` (${activityStop.duration})` : ''
+          
+          stopsHtml += `
+            <div class="stop-item activity-child" data-stop="${activityIndex}">
+              <div class="stop-header">
+                <span class="stop-icon">${activityIcon}</span>
+                <span class="stop-name">${activityStop.name}</span>
+              </div>
+              <div class="stop-details">
+                ${activityTime ? `<div class="stop-time">${activityTime}${activityDuration}</div>` : ''}
+                <div class="stop-travel" style="color: ${getTravelModeColor(activityStop.travelMode)}">
+                  ${activityStop.travelMode === 'foot' ? '🚶' : '🚌'} ${activityStop.travelTime || ''}
+                </div>
+              </div>
+            </div>
+          `
+        })
+        
+        // Add return indicator
+        if (parkingGroup.returnToParking) {
+          stopsHtml += `
+            <div class="return-indicator">
+              <span class="return-icon">↩️</span>
+              <span class="return-text">Return to parking</span>
+            </div>
+          `
+        }
+        
+        stopsHtml += `
+            </div>
+          </div>
+        `
+        
+        // Mark parking stop as processed
+        processedIndices.add(stopIndex)
+        
+      } else {
+        // Regular stop (not part of parking group or parking without children)
+        stopsHtml += `
+          <div class="stop-item" data-stop="${stopIndex}">
+            <div class="stop-header">
+              <span class="stop-icon">${icon}</span>
+              <span class="stop-name">${stop.name}</span>
+            </div>
+            <div class="stop-details">
+              ${timeDisplay ? `<div class="stop-time">${timeDisplay}${durationDisplay}</div>` : ''}
+              ${stop.travelMode && stopIndex > 0 ? `
+                <div class="stop-travel" style="color: ${getTravelModeColor(stop.travelMode)}">
+                  ${stop.travelMode === 'car' ? '🚗' : stop.travelMode === 'foot' ? '🚶' : '🚌'} ${stop.travelTime || ''}
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `
+      }
+    })
     
     dayCard.innerHTML = `
       <div class="day-header">
-        <h3>${day.day} - ${day.city}</h3>
-        <div class="date">${day.date}</div>
+        <h3>${day.day}</h3>
+        <div class="day-location">${dayTitle}</div>
       </div>
-      <div class="day-details">
-        <h4>🏕️ ${day.camping}</h4>
-        <p>${day.description}</p>
-        <div class="distance">${day.distance}</div>
-        <button class="view-location-btn" onclick="viewLocation(${index})">📍 View Location</button>
+      <div class="day-stops">
+        ${stopsHtml}
       </div>
     `
     
+    // Add click handler for the day card
     dayCard.addEventListener('click', (e) => {
-      // Don't trigger day selection if clicking on the view location button
-      if (e.target.classList.contains('view-location-btn')) {
+      // Don't toggle if clicking on a stop item
+      if (e.target.closest('.stop-item')) {
         return
       }
       
-      currentSelectedDay = index // Update keyboard navigation state
-      selectDay(index)
-      // Update keyboard focus visual indicator
+      // Toggle expanded/collapsed state
+      dayCard.classList.toggle('expanded')
+      
+      currentSelectedDay = dayIndex
+      selectDay(dayIndex)
+      
       if (window.innerWidth > 768) {
         updateKeyboardFocus()
       }
+    })
+    
+    // Add click handlers for parking groups
+    const parkingGroupElements = dayCard.querySelectorAll('.parking-group')
+    parkingGroupElements.forEach(groupEl => {
+      const headerEl = groupEl.querySelector('.stop-header')
+      const expandIcon = groupEl.querySelector('.expand-indicator')
+      
+      // Click on expand arrow - just toggle expansion
+      if (expandIcon) {
+        expandIcon.addEventListener('click', (e) => {
+          e.stopPropagation()
+          groupEl.classList.toggle('expanded')
+        })
+      }
+      
+      // Click on parking header (not arrow) - zoom to location and toggle
+      headerEl.addEventListener('click', (e) => {
+        e.stopPropagation()
+        
+        // Toggle expansion
+        groupEl.classList.toggle('expanded')
+        
+        // Also handle the parking stop click behavior
+        const stopIndex = parseInt(groupEl.getAttribute('data-stop'))
+        const stop = day.stops[stopIndex]
+        
+        if (stop && stop.coords) {
+          // Remove highlighting from all stops
+          document.querySelectorAll('.stop-item').forEach(item => {
+            item.classList.remove('highlighted')
+          })
+          
+          // Highlight this parking group
+          groupEl.classList.add('highlighted')
+          
+          // Get the marker for this parking stop
+          const key = `${dayIndex}-${stopIndex}`
+          const marker = markerMap.get(key)
+          
+          // Zoom to parking location
+          map.setView(stop.coords, 15, {
+            animate: true,
+            duration: 0.5
+          })
+          
+          // Open popup after zoom animation
+          if (marker) {
+            setTimeout(() => {
+              marker.openPopup()
+            }, 600)
+          }
+        }
+      })
+    })
+    
+    // Add click handlers for individual stops (including parking groups)
+    const stopItems = dayCard.querySelectorAll('.stop-item')
+    stopItems.forEach(stopItem => {
+      stopItem.addEventListener('click', (e) => {
+        e.stopPropagation() // Don't trigger day card click
+        
+        const stopIndex = parseInt(stopItem.getAttribute('data-stop'))
+        const stop = day.stops[stopIndex]
+        
+        if (!stop || !stop.coords) {
+          console.warn('Stop has no coordinates:', stop)
+          return
+        }
+        
+        // Remove highlighting from all stops
+        document.querySelectorAll('.stop-item').forEach(item => {
+          item.classList.remove('highlighted')
+        })
+        
+        // Highlight this stop
+        stopItem.classList.add('highlighted')
+        
+        // Get the marker for this stop
+        const key = `${dayIndex}-${stopIndex}`
+        const marker = markerMap.get(key)
+        
+        // Check if we're already zoomed to this location
+        const currentCenter = map.getCenter()
+        const isAlreadyThere = Math.abs(currentCenter.lat - stop.coords[0]) < 0.001 && 
+                               Math.abs(currentCenter.lng - stop.coords[1]) < 0.001
+        
+        if (isAlreadyThere && marker) {
+          // Second click - toggle popup
+          if (marker.isPopupOpen()) {
+            marker.closePopup()
+          } else {
+            marker.openPopup()
+          }
+        } else {
+          // First click - zoom to location
+          map.setView(stop.coords, 15, {
+            animate: true,
+            duration: 0.5
+          })
+          
+          // Open popup after a short delay to let zoom animation complete
+          if (marker) {
+            setTimeout(() => {
+              marker.openPopup()
+            }, 600)
+          }
+        }
+      })
     })
     
     itineraryContainer.appendChild(dayCard)
@@ -944,7 +1911,7 @@ function renderItinerary(tripDays) {
 }
 
 // Select a specific day
-function selectDay(index, shouldZoomMap = false) {
+function selectDay(index, shouldZoomMap = false, shouldMoveMap = true) {
   if (!currentTripData || !currentTripData.days[index]) return
   
   // Remove active class from all cards
@@ -971,66 +1938,254 @@ function selectDay(index, shouldZoomMap = false) {
     behavior: 'smooth'
   })
   
-  // Center map on selected location (with or without zoom)
-  const day = currentTripData.days[index]
-  if (shouldZoomMap) {
-    // Zoom to location (View Location button or Enter key)
-    map.setView(day.coordinates, 10)
-  } else {
-    // Just center without changing zoom (pin click or day click)
-    const currentZoom = map.getZoom()
-    map.setView(day.coordinates, currentZoom)
-  }
-  
-  // Highlight marker
-  markers.forEach((marker, i) => {
-    if (i === index) {
-      marker.openPopup()
+  // Center map on first stop of the selected day (with or without zoom)
+  // Skip if shouldMoveMap is false (e.g., when clicking on a specific pin)
+  if (shouldMoveMap) {
+    const day = currentTripData.days[index]
+    if (day.stops && day.stops.length > 0 && day.stops[0].coords) {
+      if (shouldZoomMap) {
+        // Zoom to location (View Location button or Enter key)
+        map.setView(day.stops[0].coords, 10)
+      } else {
+        // Just center without changing zoom (pin click or day click)
+        const currentZoom = map.getZoom()
+        map.setView(day.stops[0].coords, currentZoom)
+      }
     }
-  })
-  
-  // Update images on desktop
-  if (window.innerWidth > 768) {
-    showLocationImages(day)
   }
+  
+  // Update images on desktop - use first sightseeing stop
+  if (window.innerWidth > 768) {
+    const sightseeingStop = day.stops.find(s => s.type === 'sightseeing')
+    if (sightseeingStop) {
+      showLocationImages({
+        city: sightseeingStop.name,
+        country: sightseeingStop.area || '',
+        images: [sightseeingStop.name]
+      })
+    }
+  }
+}
+
+// Create custom icon for stop type
+function createStopIcon(type) {
+  const emoji = getStopIcon(type)
+  const colors = {
+    'start': '#28a745',    // green for start
+    'sleep': '#6f42c1',
+    'food': '#fd7e14',
+    'sightseeing': '#007bff',
+    'parking': '#6c757d',
+    'end': '#dc3545'       // red for end
+  }
+  const color = colors[type] || '#333'
+  
+  return L.divIcon({
+    className: 'custom-marker',
+    html: `<div style="
+      background: ${color};
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      border: 2px solid white;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    ">${emoji}</div>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+    popupAnchor: [0, -16]
+  })
 }
 
 // Add markers to map
+// Global map to store marker references by day and stop index
+const markerMap = new Map()
+
 function addMapMarkers(tripDays) {
-  tripDays.forEach((day, index) => {
-    const marker = L.marker(day.coordinates).addTo(map)
-    
-    // Simple, minimal popup with just essential info
-    marker.bindPopup(`
-      <div style="text-align: center; padding: 5px;">
-        <h4 style="margin: 0 0 5px 0; font-size: 1rem; color: #333;">${day.day}</h4>
-        <p style="margin: 0; font-size: 0.9rem; color: #666; font-weight: 500;">${day.city}</p>
-      </div>
-    `)
-    
-    // When marker is clicked, select the corresponding day
-    marker.on('click', () => {
-      currentSelectedDay = index
-      selectDay(index) // Don't zoom map on marker click
-      updateKeyboardFocus()
+  markerMap.clear()
+  
+  tripDays.forEach((day, dayIndex) => {
+    day.stops.forEach((stop, stopIndex) => {
+      if (!stop.coords) {
+        console.warn(`No coordinates for stop: ${stop.name}`)
+        return
+      }
+      
+      const icon = createStopIcon(stop.type)
+      const marker = L.marker(stop.coords, { icon }).addTo(map)
+      
+      // Create popup with stop info
+      const timeInfo = stop.time ? `<div style="color: #666; font-size: 0.85rem;">${stop.time}</div>` : ''
+      const travelInfo = stop.travelMode && stopIndex > 0 ? 
+        `<div style="color: ${getTravelModeColor(stop.travelMode)}; font-size: 0.85rem; margin-top: 5px;">
+          ${stop.travelMode === 'car' ? '🚗' : stop.travelMode === 'foot' ? '🚶' : '🚌'} ${stop.travelTime || ''}
+        </div>` : ''
+      
+      marker.bindPopup(`
+        <div style="text-align: center; padding: 5px;">
+          <div style="font-size: 1.2rem; margin-bottom: 5px;">${getStopIcon(stop.type)}</div>
+          <h4 style="margin: 0 0 5px 0; font-size: 1rem; color: #333;">${stop.name}</h4>
+          <p style="margin: 0; font-size: 0.9rem; color: #666; font-weight: 500;">${day.day} - Stop ${stopIndex + 1}</p>
+          ${timeInfo}
+          ${travelInfo}
+        </div>
+      `)
+      
+      // When marker is clicked, highlight sidebar item and scroll to it
+      marker.on('click', () => {
+        // Remove previous highlighting
+        document.querySelectorAll('.stop-item').forEach(item => {
+          item.classList.remove('highlighted')
+        })
+        
+        // Find and highlight the corresponding sidebar item
+        const sidebarStop = document.querySelector(`.day-card[data-day="${dayIndex}"] .stop-item[data-stop="${stopIndex}"]`)
+        if (sidebarStop) {
+          sidebarStop.classList.add('highlighted')
+          
+          // Expand the day card if not already expanded
+          const dayCard = document.querySelector(`.day-card[data-day="${dayIndex}"]`)
+          if (dayCard && !dayCard.classList.contains('expanded')) {
+            dayCard.classList.add('expanded')
+          }
+          
+          // If it's in a parking group, expand that too
+          const parkingGroup = sidebarStop.closest('.parking-group')
+          if (parkingGroup && !parkingGroup.classList.contains('expanded')) {
+            parkingGroup.classList.add('expanded')
+          }
+          
+          // Scroll sidebar to show the highlighted item
+          const sidebar = document.querySelector('.sidebar')
+          const sidebarRect = sidebar.getBoundingClientRect()
+          const stopRect = sidebarStop.getBoundingClientRect()
+          const offset = 100
+          
+          const scrollTop = sidebar.scrollTop + (stopRect.top - sidebarRect.top) - offset
+          sidebar.scrollTo({
+            top: scrollTop,
+            behavior: 'smooth'
+          })
+        }
+        
+        currentSelectedDay = dayIndex
+        selectDay(dayIndex, false, false) // Don't move map when clicking a pin!
+        updateKeyboardFocus()
+      })
+      
+      // Store marker reference
+      const key = `${dayIndex}-${stopIndex}`
+      markerMap.set(key, marker)
+      markers.push(marker)
     })
-    
-    markers.push(marker)
   })
 }
 
-// Draw route on map
-function drawRoute(tripDays) {
-  const routeCoordinates = tripDays.map(day => day.coordinates)
+// Analyze stops to identify parking-based activity groups
+function identifyParkingGroups(day) {
+  const groups = []
+  let currentGroup = null
   
-  const routeLine = L.polyline(routeCoordinates, {
-    color: '#007bff',
-    weight: 3,
-    opacity: 0.7
-  }).addTo(map)
+  day.stops.forEach((stop, index) => {
+    if (stop.type === 'parking') {
+      // Start a new parking group
+      if (currentGroup) {
+        groups.push(currentGroup)
+      }
+      currentGroup = {
+        parkingStop: stop,
+        parkingIndex: index,
+        activities: [],
+        returnToParking: false
+      }
+    } else if (currentGroup && (stop.travelMode === 'foot' || stop.travelMode === 'public_transport')) {
+      // Activity within parking group
+      currentGroup.activities.push({ stop, index })
+      
+      // Check if next stop is car travel or end of day
+      const nextStop = day.stops[index + 1]
+      if (!nextStop || nextStop.travelMode === 'car') {
+        currentGroup.returnToParking = true
+        groups.push(currentGroup)
+        currentGroup = null
+      }
+    } else {
+      // End current parking group if exists
+      if (currentGroup) {
+        groups.push(currentGroup)
+        currentGroup = null
+      }
+    }
+  })
+  
+  if (currentGroup) {
+    groups.push(currentGroup)
+  }
+  
+  return groups
+}
+
+// Draw route on map with color-coded travel modes and parking loops
+function drawRoute(tripDays) {
+  const allCoords = []
+  
+  tripDays.forEach(day => {
+    const parkingGroups = identifyParkingGroups(day)
+    let previousCoords = null
+    
+    day.stops.forEach((stop, stopIndex) => {
+      if (!stop.coords) return
+      
+      allCoords.push(stop.coords)
+      
+      // Find if this stop is part of a parking group
+      const parkingGroup = parkingGroups.find(g => 
+        g.parkingIndex === stopIndex || 
+        g.activities.some(a => a.index === stopIndex)
+      )
+      
+      // Draw line from previous stop to this one
+      if (previousCoords && stopIndex > 0) {
+        const color = getTravelModeColor(stop.travelMode)
+        const dashArray = stop.travelMode === 'foot' ? '5, 10' : null
+        
+        L.polyline([previousCoords, stop.coords], {
+          color: color,
+          weight: 3,
+          opacity: 0.7,
+          dashArray: dashArray
+        }).addTo(map)
+      }
+      
+      // If this is the last activity in a parking group, draw return line to parking
+      if (parkingGroup && parkingGroup.returnToParking) {
+        const lastActivity = parkingGroup.activities[parkingGroup.activities.length - 1]
+        if (lastActivity.index === stopIndex && parkingGroup.parkingStop.coords) {
+          const returnColor = getTravelModeColor(stop.travelMode) // Same mode as last activity
+          const returnDash = stop.travelMode === 'foot' ? '5, 10' : null
+          
+          L.polyline([stop.coords, parkingGroup.parkingStop.coords], {
+            color: returnColor,
+            weight: 2,
+            opacity: 0.5,
+            dashArray: returnDash,
+            className: 'return-to-parking-line'
+          }).addTo(map)
+        }
+      }
+      
+      previousCoords = stop.coords
+    })
+  })
   
   // Fit map to show entire route
-  map.fitBounds(routeLine.getBounds(), { padding: [20, 20] })
+  if (allCoords.length > 0) {
+    const bounds = L.latLngBounds(allCoords)
+    map.fitBounds(bounds, { padding: [50, 50] })
+  }
 }
 
 // Fetch images from Wikimedia Commons (free, no API key needed)
@@ -1506,42 +2661,42 @@ async function processPreloadQueue() {
 // Preload images for a specific day
 async function preloadImagesForDay(day, dayIndex) {
   try {
-    let imageLocations = []
-    let location = day.city
-    let country = day.country
+    // Find all sightseeing stops for this day
+    const sightseeingStops = day.stops.filter(s => s.type === 'sightseeing')
     
-    // Determine what to search for
-    if (day.images && day.images.length > 0) {
-      imageLocations = day.images
-    } else {
-      imageLocations = [location]
+    if (sightseeingStops.length === 0) return
+    
+    for (const stop of sightseeingStops) {
+      const imageLocations = [stop.name]
+      const location = stop.name
+      const country = stop.area || ''
+      
+      // Create cache key
+      const cacheKey = `${location}_${country}_${imageLocations.join('|')}`
+      
+      // Skip if already cached or being preloaded
+      if (imageCache.has(cacheKey) || preloadingPromises.has(cacheKey)) {
+        continue
+      }
+      
+      console.log(`Preloading images for ${stop.name} on Day ${dayIndex + 1}`)
+      
+      // Create promise for this preload operation
+      const preloadPromise = preloadImagesForLocation(imageLocations, country, location)
+      preloadingPromises.set(cacheKey, preloadPromise)
+      
+      // Wait for preload to complete
+      const images = await preloadPromise
+      
+      // Cache the results
+      imageCache.set(cacheKey, images)
+      preloadingPromises.delete(cacheKey)
+      
+      console.log(`Preloaded ${images.length} images for ${location}`)
     }
-    
-    // Create cache key
-    const cacheKey = `${location}_${country}_${imageLocations.join('|')}`
-    
-    // Skip if already cached or being preloaded
-    if (imageCache.has(cacheKey) || preloadingPromises.has(cacheKey)) {
-      return
-    }
-    
-    console.log(`Preloading images for Day ${dayIndex + 1}: ${location}`)
-    
-    // Create promise for this preload operation
-    const preloadPromise = preloadImagesForLocation(imageLocations, country, location)
-    preloadingPromises.set(cacheKey, preloadPromise)
-    
-    // Wait for preload to complete
-    const images = await preloadPromise
-    
-    // Cache the results
-    imageCache.set(cacheKey, images)
-    preloadingPromises.delete(cacheKey)
-    
-    console.log(`Preloaded ${images.length} images for ${location}`)
     
   } catch (error) {
-    console.error(`Error preloading images for ${day.city}:`, error)
+    console.error(`Error preloading images for day ${dayIndex + 1}:`, error)
   }
 }
 
@@ -1588,7 +2743,16 @@ function viewLocation(dayIndex) {
     // Zoom map and show images
     selectDay(dayIndex, true) // true = shouldZoomMap
     updateKeyboardFocus()
-    showLocationImages(currentTripData.days[dayIndex])
+    
+    const day = currentTripData.days[dayIndex]
+    const sightseeingStop = day.stops.find(s => s.type === 'sightseeing')
+    if (sightseeingStop) {
+      showLocationImages({
+        city: sightseeingStop.name,
+        country: sightseeingStop.area || '',
+        images: [sightseeingStop.name]
+      })
+    }
   }
 }
 

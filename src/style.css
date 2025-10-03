@@ -140,6 +140,207 @@ body {
     font-weight: 500;
 }
 
+/* Day location subtitle */
+.day-location {
+    font-size: 0.8rem;
+    color: #666;
+    font-weight: 400;
+}
+
+/* Day stops container */
+.day-stops {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.day-card.expanded .day-stops {
+    max-height: 1000px;
+    border-top: 1px solid #e0e0e0;
+}
+
+/* Individual stop item */
+.stop-item {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background 0.2s ease;
+    cursor: pointer;
+}
+
+.stop-item:last-child {
+    border-bottom: none;
+}
+
+.stop-item:hover {
+    background: #f8f9fa;
+}
+
+.stop-item.highlighted {
+    background: #e3f2fd;
+    border-left: 3px solid #2196F3;
+    animation: pulse 0.5s ease-in-out;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        background: #e3f2fd;
+    }
+    50% {
+        background: #bbdefb;
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.stop-item.loaded {
+    animation: fadeIn 0.5s ease-in;
+}
+
+.loaded-indicator {
+    color: #4CAF50;
+    font-size: 0.8rem;
+    margin-left: 5px;
+    opacity: 0;
+    animation: fadeIn 0.3s ease-in forwards;
+}
+
+.stop-item.highlighted .stop-name {
+    color: #1976D2;
+    font-weight: 600;
+}
+
+.stop-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.stop-icon {
+    font-size: 1.2rem;
+    line-height: 1;
+}
+
+.stop-name {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #333;
+}
+
+.stop-details {
+    margin-left: 2rem;
+    font-size: 0.75rem;
+    color: #666;
+}
+
+.stop-time {
+    margin-bottom: 0.25rem;
+}
+
+.stop-travel {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 500;
+}
+
+/* Parking groups with children */
+.parking-group {
+    border-left: 3px solid #6c757d;
+    background: #f8f9fa;
+}
+
+.parking-group.highlighted {
+    background: #e3f2fd;
+    border-left: 3px solid #2196F3;
+}
+
+.parking-group .stop-header {
+    position: relative;
+    cursor: pointer;
+    user-select: none;
+}
+
+.parking-group .stop-header:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+.parking-group .expand-indicator {
+    position: absolute;
+    right: 0.5rem;
+    font-size: 0.7rem;
+    transition: transform 0.2s ease;
+}
+
+.parking-group.expanded .expand-indicator {
+    transform: rotate(180deg);
+}
+
+.parking-activities {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    margin-left: 1rem;
+    border-left: 2px dashed #dee2e6;
+    padding-left: 0.5rem;
+}
+
+.parking-group.expanded .parking-activities {
+    max-height: 1000px;
+    margin-top: 0.5rem;
+}
+
+.activity-child {
+    background: #ffffff;
+    border-left: none;
+    margin-bottom: 0.5rem;
+    padding: 0.5rem;
+    border-radius: 4px;
+}
+
+.activity-child .stop-header {
+    margin-bottom: 0.25rem;
+}
+
+.activity-child .stop-icon {
+    font-size: 1rem;
+}
+
+.activity-child .stop-name {
+    font-size: 0.8rem;
+}
+
+.return-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    margin-top: 0.5rem;
+    background: #e7f3ff;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    color: #0066cc;
+    font-style: italic;
+}
+
+.return-icon {
+    font-size: 1rem;
+}
+
+.return-text {
+    font-weight: 500;
+}
+
 /* Map container */
 .map-container {
     position: relative;
@@ -150,6 +351,16 @@ body {
     height: 100%;
     width: 100%;
     border-radius: 0;
+}
+
+/* Leaflet map customizations */
+.return-to-parking-line {
+    opacity: 0.4 !important;
+}
+
+.custom-marker {
+    background: none !important;
+    border: none !important;
 }
 
 /* Image slideshow */
